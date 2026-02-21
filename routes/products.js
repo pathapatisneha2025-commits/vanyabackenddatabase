@@ -70,7 +70,7 @@ router.post(
 
       // Insert into DB
       const result = await pool.query(
-        `INSERT INTO products (name, category, price, old_price, discount, stock, main_image, thumbnails, created_at)
+        `INSERT INTO products (name, category, price, old_price, discount, stock,  img_url, thumbnails, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,CURRENT_TIMESTAMP)
          RETURNING *`,
         [
@@ -126,7 +126,7 @@ router.put(
       // Update DB
       const result = await pool.query(
         `UPDATE products
-         SET name=$1, category=$2, price=$3, old_price=$4, discount=$5, stock=$6, main_image=$7, thumbnails=$8, updated_at=CURRENT_TIMESTAMP
+         SET name=$1, category=$2, price=$3, old_price=$4, discount=$5, stock=$6, img_url=$7, thumbnails=$8, updated_at=CURRENT_TIMESTAMP
          WHERE id=$9
          RETURNING *`,
         [
