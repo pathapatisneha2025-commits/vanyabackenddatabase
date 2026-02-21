@@ -44,7 +44,7 @@ const calculateDiscount = (price, oldPrice) => {
 router.post(
   "/add",
   upload.fields([
-    { name: "mainImage", maxCount: 1 },
+    { name: "img_url", maxCount: 1 },
     { name: "thumbnails", maxCount: 5 },
   ]),
   async (req, res) => {
@@ -99,7 +99,7 @@ router.post(
 router.put(
   "/update/:id",
   upload.fields([
-    { name: "mainImage", maxCount: 1 },
+    { name: "img_url", maxCount: 1 },
     { name: "thumbnails", maxCount: 5 },
   ]),
   async (req, res) => {
