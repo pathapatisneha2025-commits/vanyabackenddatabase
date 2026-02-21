@@ -49,7 +49,7 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const { name, cat, price, oldPrice, stock } = req.body;
+const { name, cat, price, oldPrice, stock, type } = req.body; // <-- include type
       const discount = calculateDiscount(price, oldPrice);
 
       // Upload main image
@@ -69,21 +69,22 @@ router.post(
       }
 
       // Insert into DB
-      const result = await pool.query(
-        `INSERT INTO products (name, category, price, old_price, discount, stock,  img_url, thumbnails, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,CURRENT_TIMESTAMP)
-         RETURNING *`,
-        [
-          name,
-          cat,
-          Number(price),
-          Number(oldPrice),
-          discount,
-          Number(stock),
-          mainImageUrl,
-          JSON.stringify(thumbnailUrls),
-        ]
-      );
+    const result = await pool.query(
+  `INSERT INTO products (name, category, price, old_price, discount, stock, type, img_url, thumbnails, created_at)
+   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
+   RETURNING *`,
+  [
+    name,
+    cat,
+    Number(price),
+    Number(oldPrice),
+    discount,
+    Number(stock),
+    type || 'Regular',  // <-- default
+    mainImageUrl,
+    JSON.stringify(thumbnailUrls),
+  ]
+);
 
       res.json({ product: result.rows[0] });
     } catch (err) {
@@ -104,15 +105,8 @@ router.put(
   ]),
   async (req, res) => {
     try {
-      const {
-        name,
-        cat,
-        price,
-        oldPrice,
-        stock,
-        existingMainImage,
-        existingThumbnails,
-      } = req.body;
+    const { name, cat, price, oldPrice, stock, type, existingMainImage, existingThumbnails } = req.body;
+
 
       const discount = calculateDiscount(price, oldPrice);
 
@@ -135,31 +129,33 @@ router.put(
       }
 
       // --- Update product in DB ---
-      const result = await pool.query(
-        `UPDATE products
-         SET name=$1,
-             category=$2,
-             price=$3,
-             old_price=$4,
-             discount=$5,
-             stock=$6,
-             img_url=$7,
-             thumbnails=$8,
-             updated_at=CURRENT_TIMESTAMP
-         WHERE id=$9
-         RETURNING *`,
-        [
-          name,
-          cat,
-          Number(price),
-          Number(oldPrice),
-          discount,
-          Number(stock),
-          mainImageUrl,
-          JSON.stringify(thumbnailUrls),
-          req.params.id,
-        ]
-      );
+    const result = await pool.query(
+  `UPDATE products
+   SET name=$1,
+       category=$2,
+       price=$3,
+       old_price=$4,
+       discount=$5,
+       stock=$6,
+       type=$7,
+       img_url=$8,
+       thumbnails=$9,
+       updated_at=CURRENT_TIMESTAMP
+   WHERE id=$10
+   RETURNING *`,
+  [
+    name,
+    cat,
+    Number(price),
+    Number(oldPrice),
+    discount,
+    Number(stock),
+    type || 'Regular', // <-- NEW
+    mainImageUrl,
+    JSON.stringify(thumbnailUrls),
+    req.params.id,
+  ]
+);
 
       if (!result.rows.length)
         return res.status(404).json({ error: "Product not found" });
