@@ -99,22 +99,33 @@ router.post(
 router.put(
   "/update/:id",
   upload.fields([
-    { name: "img_url", maxCount: 1 },
-    { name: "thumbnails", maxCount: 5 },
+    { name: "img_url", maxCount: 1 },      // main image
+    { name: "thumbnails", maxCount: 5 },   // multiple thumbnails
   ]),
   async (req, res) => {
     try {
-      const { name, cat, price, oldPrice, stock, existingMainImage, existingThumbnails } = req.body;
+      const {
+        name,
+        cat,
+        price,
+        oldPrice,
+        stock,
+        existingMainImage,
+        existingThumbnails,
+      } = req.body;
+
       const discount = calculateDiscount(price, oldPrice);
 
-      // Main image
+      // --- Main image ---
+      // Use the same field name as sent from frontend: "img_url"
       let mainImageUrl = existingMainImage || null;
-      if (req.files?.mainImage?.length) {
-        const result = await uploadToCloudinary(req.files.mainImage[0].buffer);
+      if (req.files?.img_url?.length) {
+        const result = await uploadToCloudinary(req.files.img_url[0].buffer);
         mainImageUrl = result.secure_url;
       }
 
-      // Thumbnails
+      // --- Thumbnails ---
+      // Parse existing thumbnails if any
       let thumbnailUrls = existingThumbnails ? JSON.parse(existingThumbnails) : [];
       if (req.files?.thumbnails?.length) {
         for (const file of req.files.thumbnails) {
@@ -123,10 +134,18 @@ router.put(
         }
       }
 
-      // Update DB
+      // --- Update product in DB ---
       const result = await pool.query(
         `UPDATE products
-         SET name=$1, category=$2, price=$3, old_price=$4, discount=$5, stock=$6, img_url=$7, thumbnails=$8, updated_at=CURRENT_TIMESTAMP
+         SET name=$1,
+             category=$2,
+             price=$3,
+             old_price=$4,
+             discount=$5,
+             stock=$6,
+             img_url=$7,
+             thumbnails=$8,
+             updated_at=CURRENT_TIMESTAMP
          WHERE id=$9
          RETURNING *`,
         [
@@ -142,7 +161,8 @@ router.put(
         ]
       );
 
-      if (!result.rows.length) return res.status(404).json({ error: "Product not found" });
+      if (!result.rows.length)
+        return res.status(404).json({ error: "Product not found" });
 
       res.json({ product: result.rows[0] });
     } catch (err) {
