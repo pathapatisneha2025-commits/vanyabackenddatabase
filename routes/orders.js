@@ -64,8 +64,12 @@ router.post("/add", async (req, res) => {
     return res.status(400).json({ message: "Invalid order data" });
   }
 
+  const client = await pool.connect();
+
   try {
-    // Insert the order
+    await client.query('BEGIN');
+
+    // Insert order
     const insertOrderQuery = `
       INSERT INTO orders
       (full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items)
@@ -85,18 +89,23 @@ router.post("/add", async (req, res) => {
       JSON.stringify(cartItems)
     ];
 
-    const result = await pool.query(insertOrderQuery, orderValues);
+    const result = await client.query(insertOrderQuery, orderValues);
     const orderId = result.rows[0].id;
 
-    // Clear the cart for this user
+    // Delete cart items for this user
     if (userId) {
-      await pool.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
+      await client.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
     }
+
+    await client.query('COMMIT');
 
     res.status(201).json({ message: "Order placed successfully", orderId });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 
