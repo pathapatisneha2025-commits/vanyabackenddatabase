@@ -4,6 +4,7 @@ const AddSareeProducts = require("./routes/products");
 const Cart = require("./routes/cart");
 const Orders = require("./routes/orders");
 const AuthLogin = require("./routes/Auth");
+const Reviews = require("./routes/reviews");
 
 
 
@@ -19,6 +20,7 @@ app.use("/products",AddSareeProducts);
 app.use("/cart",Cart);
 app.use("/orders",Orders);
 app.use("/auth",AuthLogin);
+app.use("/review",Reviews);
 
 
 
