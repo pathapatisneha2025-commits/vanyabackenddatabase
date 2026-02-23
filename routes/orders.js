@@ -93,7 +93,7 @@ router.post("/add", async (req, res) => {
     const orderId = result.rows[0].id;
 
     // Delete cart items for this user
-    if (userId) {
+    if (user_id) {
       await client.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
     }
 
