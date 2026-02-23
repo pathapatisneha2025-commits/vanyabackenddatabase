@@ -5,6 +5,8 @@ const Cart = require("./routes/cart");
 const Orders = require("./routes/orders");
 const AuthLogin = require("./routes/Auth");
 const Reviews = require("./routes/reviews");
+const Contact = require("./routes/contact");
+
 
 
 
@@ -21,6 +23,7 @@ app.use("/cart",Cart);
 app.use("/orders",Orders);
 app.use("/auth",AuthLogin);
 app.use("/review",Reviews);
+app.use("/contact",Contact);
 
 
 
