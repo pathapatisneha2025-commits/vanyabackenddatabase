@@ -71,10 +71,10 @@ router.post("/add", async (req, res) => {
 
     // Insert order
     const insertOrderQuery = `
-      INSERT INTO orders
-      (full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-      RETURNING id
+    INSERT INTO orders
+(full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items, user_id)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+RETURNING id
     `;
     const orderValues = [
       formData.fullName,
@@ -86,7 +86,9 @@ router.post("/add", async (req, res) => {
       formData.address,
       paymentMethod,
       totalAmount,
-      JSON.stringify(cartItems)
+      JSON.stringify(cartItems),
+        user_id  // <-- pass user_id here
+
     ];
 
     const result = await client.query(insertOrderQuery, orderValues);
