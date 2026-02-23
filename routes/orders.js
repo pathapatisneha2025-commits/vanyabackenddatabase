@@ -58,7 +58,7 @@ router.get("/:order_id", async (req, res) => {
    CREATE NEW ORDER
 ====================================================== */
 router.post("/add", async (req, res) => {
-  const { formData, cartItems, paymentMethod, totalAmount, userId } = req.body;
+  const { formData, cartItems, paymentMethod, totalAmount, user_id } = req.body;
 
   if (!formData || !cartItems || cartItems.length === 0) {
     return res.status(400).json({ message: "Invalid order data" });
@@ -94,7 +94,7 @@ router.post("/add", async (req, res) => {
 
     // Delete cart items for this user
     if (user_id) {
-      await client.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
+      await client.query(`DELETE FROM cart_items WHERE user_id = $1`, [user_id]);
     }
 
     await client.query('COMMIT');
