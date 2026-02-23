@@ -58,20 +58,21 @@ router.get("/:order_id", async (req, res) => {
    CREATE NEW ORDER
 ====================================================== */
 router.post("/add", async (req, res) => {
-  const { formData, cartItems, paymentMethod, totalAmount } = req.body;
+  const { formData, cartItems, paymentMethod, totalAmount, userId } = req.body;
 
   if (!formData || !cartItems || cartItems.length === 0) {
     return res.status(400).json({ message: "Invalid order data" });
   }
 
   try {
-    const query = `
+    // Insert the order
+    const insertOrderQuery = `
       INSERT INTO orders
       (full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       RETURNING id
     `;
-    const values = [
+    const orderValues = [
       formData.fullName,
       formData.phone,
       formData.email,
@@ -84,8 +85,13 @@ router.post("/add", async (req, res) => {
       JSON.stringify(cartItems)
     ];
 
-    const result = await pool.query(query, values);
+    const result = await pool.query(insertOrderQuery, orderValues);
     const orderId = result.rows[0].id;
+
+    // Clear the cart for this user
+    if (userId) {
+      await pool.query(`DELETE FROM cart_items WHERE user_id = $1`, [userId]);
+    }
 
     res.status(201).json({ message: "Order placed successfully", orderId });
   } catch (err) {
