@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const AddSareeProducts = require("./routes/products");
 const Cart = require("./routes/cart");
+const Orders = require("./routes/orders");
 
 
 
@@ -14,6 +15,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/products",AddSareeProducts);
 app.use("/cart",Cart);
+app.use("/orders",Orders);
 
 
 
