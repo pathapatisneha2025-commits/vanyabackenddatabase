@@ -149,6 +149,46 @@ router.delete("/delete/:cart_id", async (req, res) => {
 
 
 
+// Admin adds a coupon
+router.post("/add/coupons", async (req, res) => {
+  const {
+    code,
+    discount_type,
+    discount_value,
+    apply_type,
+    category_name,
+    product_id,
+    min_amount,
+    expiry_date,
+    is_active
+  } = req.body;
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO coupons
+      (code, discount_type, discount_value, apply_type, category_name, product_id, min_amount, expiry_date, is_active)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        code,
+        discount_type,
+        discount_value,
+        apply_type,
+        category_name || null,
+        product_id || null,
+        min_amount || 0,
+        expiry_date || null,
+        is_active !== undefined ? is_active : true
+      ]
+    );
+
+    res.json({ success: true, coupon: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to add coupon" });
+  }
+});
+
+
 router.post("/coupon/apply", async (req, res) => {
   const { code, cartItems, subtotal } = req.body;
 
