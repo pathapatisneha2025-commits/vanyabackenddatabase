@@ -147,4 +147,82 @@ router.delete("/delete/:cart_id", async (req, res) => {
   }
 });
 
+
+
+router.post("/coupon/apply", async (req, res) => {
+  const { code, cartItems, subtotal } = req.body;
+
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM coupons WHERE code = ? AND is_active = TRUE",
+      [code]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ message: "Invalid coupon code" });
+    }
+
+    const coupon = rows[0];
+
+    // Expiry check
+    if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) {
+      return res.status(400).json({ message: "Coupon expired" });
+    }
+
+    let eligibleAmount = subtotal;
+
+    // CATEGORY COUPON
+    if (coupon.apply_type === "category") {
+      eligibleAmount = cartItems
+        .filter(item => item.category === coupon.category_name)
+        .reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+      if (eligibleAmount === 0) {
+        return res.status(400).json({
+          message: `Coupon valid only for ${coupon.category_name}`
+        });
+      }
+    }
+
+    // PRODUCT COUPON
+    if (coupon.apply_type === "product") {
+      eligibleAmount = cartItems
+        .filter(item => item.id === coupon.product_id)
+        .reduce((acc, item) => acc + item.price * item.quantity, 0);
+
+      if (eligibleAmount === 0) {
+        return res.status(400).json({
+          message: "Coupon not valid for selected products"
+        });
+      }
+    }
+
+    // Minimum amount check
+    if (eligibleAmount < coupon.min_amount) {
+      return res.status(400).json({
+        message: `Minimum ₹${coupon.min_amount} required`
+      });
+    }
+
+    let discount = 0;
+
+    if (coupon.discount_type === "percentage") {
+      discount = (eligibleAmount * coupon.discount_value) / 100;
+    } else {
+      discount = coupon.discount_value;
+    }
+
+    const finalTotal = subtotal - discount;
+
+    res.json({
+      success: true,
+      discount,
+      finalTotal
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 module.exports = router;
