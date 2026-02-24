@@ -85,9 +85,25 @@ router.get("/", async (req, res) => {
 ====================================================== */
 router.post("/add", async (req, res) => {
   const { user_id, product_id, quantity } = req.body;
-  if (!quantity || quantity < 1) return res.status(400).json({ error: "Quantity must be at least 1" });
+  if (!quantity || quantity < 1)
+    return res.status(400).json({ error: "Quantity must be at least 1" });
 
   try {
+    // 1️⃣ Check product stock
+    const productRes = await pool.query(
+      "SELECT stock FROM products WHERE id=$1",
+      [product_id]
+    );
+
+    if (productRes.rows.length === 0)
+      return res.status(404).json({ error: "Product not found" });
+
+    const currentStock = productRes.rows[0].stock;
+
+    if (currentStock < quantity)
+      return res.status(400).json({ error: "Not enough stock" });
+
+    // 2️⃣ Check if item already exists in cart
     const existing = await pool.query(
       "SELECT * FROM cart_items WHERE user_id=$1 AND product_id=$2",
       [user_id, product_id]
@@ -98,12 +114,26 @@ router.post("/add", async (req, res) => {
         "UPDATE cart_items SET quantity = quantity + $1, updated_at = NOW() WHERE user_id=$2 AND product_id=$3 RETURNING *",
         [quantity, user_id, product_id]
       );
+
+      // 3️⃣ Reduce stock
+      await pool.query(
+        "UPDATE products SET stock = stock - $1 WHERE id=$2",
+        [quantity, product_id]
+      );
+
       return res.json(updated.rows[0]);
     }
 
+    // 4️⃣ Insert new cart item
     const newItem = await pool.query(
       "INSERT INTO cart_items (user_id, product_id, quantity) VALUES ($1,$2,$3) RETURNING *",
       [user_id, product_id, quantity]
+    );
+
+    // 5️⃣ Reduce stock
+    await pool.query(
+      "UPDATE products SET stock = stock - $1 WHERE id=$2",
+      [quantity, product_id]
     );
 
     res.json(newItem.rows[0]);
@@ -112,7 +142,6 @@ router.post("/add", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
-
 /* ======================================================
    UPDATE CART ITEM QUANTITY
 ====================================================== */
