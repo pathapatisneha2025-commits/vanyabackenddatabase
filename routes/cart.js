@@ -265,4 +265,15 @@ router.post("/coupon/apply", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+router.get("/coupons/all", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM coupons ORDER BY id DESC");
+    res.json({ success: true, coupons: result.rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Failed to fetch coupons" });
+  }
+});
+
 module.exports = router;
