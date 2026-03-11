@@ -49,13 +49,13 @@ router.post(
   ]),
   async (req, res) => {
     try {
-const { name, cat, price, oldPrice, stock, type } = req.body; // <-- include type
+      const { name, cat, subCategory, price, oldPrice, stock, type } = req.body; // <-- added subCategory
       const discount = calculateDiscount(price, oldPrice);
 
       // Upload main image
       let mainImageUrl = null;
-      if (req.files?.mainImage?.length) {
-        const result = await uploadToCloudinary(req.files.mainImage[0].buffer);
+      if (req.files?.img_url?.length) {
+        const result = await uploadToCloudinary(req.files.img_url[0].buffer);
         mainImageUrl = result.secure_url;
       }
 
@@ -68,23 +68,25 @@ const { name, cat, price, oldPrice, stock, type } = req.body; // <-- include typ
         }
       }
 
-      // Insert into DB
-    const result = await pool.query(
-  `INSERT INTO products (name, category, price, old_price, discount, stock, type, img_url, thumbnails, created_at)
-   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,CURRENT_TIMESTAMP)
-   RETURNING *`,
-  [
-    name,
-    cat,
-    Number(price),
-    Number(oldPrice),
-    discount,
-    Number(stock),
-    type || 'Regular',  // <-- default
-    mainImageUrl,
-    JSON.stringify(thumbnailUrls),
-  ]
-);
+      // Insert into DB including subCategory
+      const result = await pool.query(
+        `INSERT INTO products 
+          (name, category, sub_category, price, old_price, discount, stock, type, img_url, thumbnails, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP)
+         RETURNING *`,
+        [
+          name,
+          cat,
+          subCategory || null, // <-- save subCategory
+          Number(price),
+          Number(oldPrice),
+          discount,
+          Number(stock),
+          type || 'Regular',
+          mainImageUrl,
+          JSON.stringify(thumbnailUrls),
+        ]
+      );
 
       res.json({ product: result.rows[0] });
     } catch (err) {
@@ -100,18 +102,15 @@ const { name, cat, price, oldPrice, stock, type } = req.body; // <-- include typ
 router.put(
   "/update/:id",
   upload.fields([
-    { name: "img_url", maxCount: 1 },      // main image
-    { name: "thumbnails", maxCount: 5 },   // multiple thumbnails
+    { name: "img_url", maxCount: 1 },
+    { name: "thumbnails", maxCount: 5 },
   ]),
   async (req, res) => {
     try {
-    const { name, cat, price, oldPrice, stock, type, existingMainImage, existingThumbnails } = req.body;
-
-
+      const { name, cat, subCategory, price, oldPrice, stock, type, existingMainImage, existingThumbnails } = req.body; // <-- added subCategory
       const discount = calculateDiscount(price, oldPrice);
 
       // --- Main image ---
-      // Use the same field name as sent from frontend: "img_url"
       let mainImageUrl = existingMainImage || null;
       if (req.files?.img_url?.length) {
         const result = await uploadToCloudinary(req.files.img_url[0].buffer);
@@ -119,7 +118,6 @@ router.put(
       }
 
       // --- Thumbnails ---
-      // Parse existing thumbnails if any
       let thumbnailUrls = existingThumbnails ? JSON.parse(existingThumbnails) : [];
       if (req.files?.thumbnails?.length) {
         for (const file of req.files.thumbnails) {
@@ -129,33 +127,35 @@ router.put(
       }
 
       // --- Update product in DB ---
-    const result = await pool.query(
-  `UPDATE products
-   SET name=$1,
-       category=$2,
-       price=$3,
-       old_price=$4,
-       discount=$5,
-       stock=$6,
-       type=$7,
-       img_url=$8,
-       thumbnails=$9,
-       updated_at=CURRENT_TIMESTAMP
-   WHERE id=$10
-   RETURNING *`,
-  [
-    name,
-    cat,
-    Number(price),
-    Number(oldPrice),
-    discount,
-    Number(stock),
-    type || 'Regular', // <-- NEW
-    mainImageUrl,
-    JSON.stringify(thumbnailUrls),
-    req.params.id,
-  ]
-);
+      const result = await pool.query(
+        `UPDATE products
+         SET name=$1,
+             category=$2,
+             sub_category=$3,  -- <-- added subCategory column
+             price=$4,
+             old_price=$5,
+             discount=$6,
+             stock=$7,
+             type=$8,
+             img_url=$9,
+             thumbnails=$10,
+             updated_at=CURRENT_TIMESTAMP
+         WHERE id=$11
+         RETURNING *`,
+        [
+          name,
+          cat,
+          subCategory || null, // <-- send subCategory
+          Number(price),
+          Number(oldPrice),
+          discount,
+          Number(stock),
+          type || 'Regular',
+          mainImageUrl,
+          JSON.stringify(thumbnailUrls),
+          req.params.id,
+        ]
+      );
 
       if (!result.rows.length)
         return res.status(404).json({ error: "Product not found" });
