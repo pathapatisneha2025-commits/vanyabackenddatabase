@@ -20,19 +20,19 @@ router.get("/all", async (req, res) => {
 /* ======================================================
    GET ORDERS BY USER EMAIL
 ====================================================== */
-router.get("/user/:email", async (req, res) => {
-  const { email } = req.params;
-  try {
-    const result = await pool.query(
-      "SELECT * FROM orders WHERE email=$1 ORDER BY created_at DESC",
-      [email]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+// router.get("/user/:email", async (req, res) => {
+//   const { email } = req.params;
+//   try {
+//     const result = await pool.query(
+//       "SELECT * FROM orders WHERE email=$1 ORDER BY created_at DESC",
+//       [email]
+//     );
+//     res.json(result.rows);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Internal server error" });
+//   }
+// });
 
 /* ======================================================
    GET SINGLE ORDER BY ID
