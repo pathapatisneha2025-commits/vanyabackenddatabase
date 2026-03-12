@@ -53,6 +53,22 @@ router.get("/:order_id", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+/* ======================================================
+   GET ORDERS BY USER ID
+====================================================== */
+router.get("/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  try {
+    const result = await pool.query(
+      "SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC",
+      [user_id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 /* ======================================================
    CREATE NEW ORDER
