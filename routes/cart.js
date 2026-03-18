@@ -18,7 +18,7 @@ router.get("/:user_id", async (req, res) => {
         p.img_url,
         (ci.quantity * p.price) AS subtotal
       FROM cart_items ci
-      JOIN products p ON ci.product_id = p.id
+      JOIN vanayaproducts p ON ci.product_id = p.id
       WHERE ci.user_id = $1
       ORDER BY ci.id ASC
     `, [user_id]);
