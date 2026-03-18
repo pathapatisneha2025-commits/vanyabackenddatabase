@@ -223,7 +223,7 @@ router.post("/coupon/apply", async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      "SELECT * FROM coupons WHERE code = ? AND is_active = TRUE",
+      "SELECT * FROM vanyacoupons WHERE code = ? AND is_active = TRUE",
       [code]
     );
 
@@ -297,7 +297,7 @@ router.post("/coupon/apply", async (req, res) => {
 
 router.get("/coupons/all", async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM coupons ORDER BY id DESC");
+    const result = await pool.query("SELECT * FROM vanyacoupons ORDER BY id DESC");
     res.json({ success: true, coupons: result.rows });
   } catch (err) {
     console.error(err);
