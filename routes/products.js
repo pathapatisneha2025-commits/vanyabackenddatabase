@@ -128,7 +128,7 @@ router.put(
 
       // --- Update product in DB ---
       const result = await pool.query(
-        `UPDATE products
+        `UPDATE vanayaproducts
          SET name=$1,
              category=$2,
              sub_category=$3,  -- <-- added subCategory column
@@ -173,7 +173,7 @@ router.put(
 ====================================================== */
 router.get("/all", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM products ORDER BY id DESC`);
+    const result = await pool.query(`SELECT * FROM vanayaproducts ORDER BY id DESC`);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -186,7 +186,7 @@ router.get("/all", async (req, res) => {
 ====================================================== */
 router.get("/:id", async (req, res) => {
   try {
-    const result = await pool.query(`SELECT * FROM products WHERE id=$1`, [req.params.id]);
+    const result = await pool.query(`SELECT * FROM vanayaproducts WHERE id=$1`, [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: "Product not found" });
     res.json(result.rows[0]);
   } catch (err) {
@@ -200,7 +200,7 @@ router.get("/:id", async (req, res) => {
 ====================================================== */
 router.delete("/delete/:id", async (req, res) => {
   try {
-    const result = await pool.query(`DELETE FROM products WHERE id=$1`, [req.params.id]);
+    const result = await pool.query(`DELETE FROM vanayaproducts WHERE id=$1`, [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "Product not found" });
     res.json({ message: "Product deleted successfully" });
   } catch (err) {
