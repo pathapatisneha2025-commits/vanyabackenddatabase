@@ -117,7 +117,7 @@ router.post("/add", async (req, res) => {
 
       // 3️⃣ Reduce stock
       await pool.query(
-        "UPDATE products SET stock = stock - $1 WHERE id=$2",
+        "UPDATE vanayaproducts SET stock = stock - $1 WHERE id=$2",
         [quantity, product_id]
       );
 
@@ -132,7 +132,7 @@ router.post("/add", async (req, res) => {
 
     // 5️⃣ Reduce stock
     await pool.query(
-      "UPDATE products SET stock = stock - $1 WHERE id=$2",
+      "UPDATE vanayaproducts SET stock = stock - $1 WHERE id=$2",
       [quantity, product_id]
     );
 
