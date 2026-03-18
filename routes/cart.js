@@ -194,7 +194,7 @@ router.post("/add/coupons", async (req, res) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO coupons
+      `INSERT INTO vanyacoupons
       (code, discount_type, discount_value, apply_type, category_name, product_id, min_amount, expiry_date, is_active)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [
