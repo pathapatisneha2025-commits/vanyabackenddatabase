@@ -70,7 +70,7 @@ router.post(
 
       // Insert into DB including subCategory
       const result = await pool.query(
-        `INSERT INTO products 
+        `INSERT INTO vanayaproducts 
           (name, category, sub_category, price, old_price, discount, stock, type, img_url, thumbnails, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP)
          RETURNING *`,

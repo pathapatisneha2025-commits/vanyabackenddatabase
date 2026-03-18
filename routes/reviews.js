@@ -25,7 +25,7 @@ router.post("/add", async (req, res) => {
     const { user_id, product_id, rating, comment } = req.body;
 
     const newReview = await db.query(
-      "INSERT INTO reviews (user_id, product_id, rating, comment) VALUES ($1,$2,$3,$4) RETURNING *",
+      "INSERT INTO vanayareviews (user_id, product_id, rating, comment) VALUES ($1,$2,$3,$4) RETURNING *",
       [user_id, product_id, rating, comment]
     );
 

@@ -25,7 +25,7 @@ router.post("/add", async (req, res) => {
     }
 
     const newMessage = await db.query(
-      `INSERT INTO contact_messages (name, email, phone, subject, message)
+      `INSERT INTO vanyacontact_messages (name, email, phone, subject, message)
        VALUES ($1, $2, $3, $4, $5) RETURNING *`,
       [name, email, phone, subject, message]
     );

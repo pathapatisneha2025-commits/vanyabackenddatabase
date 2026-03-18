@@ -89,7 +89,7 @@ router.post("/add", async (req, res) => {
 
     // Insert order
     const insertOrderQuery = `
-    INSERT INTO orders
+    INSERT INTO vanyaorders
 (full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items, user_id)
 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
 RETURNING id
