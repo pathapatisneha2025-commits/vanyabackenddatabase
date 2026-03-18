@@ -91,7 +91,7 @@ router.post("/add", async (req, res) => {
   try {
     // 1️⃣ Check product stock
     const productRes = await pool.query(
-      "SELECT stock FROM products WHERE id=$1",
+      "SELECT stock FROM vanayaproducts  WHERE id=$1",
       [product_id]
     );
 
