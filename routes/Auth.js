@@ -18,14 +18,14 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const userCheck = await pool.query('SELECT * FROM vanyausers WHERE email = $1', [email]);
     if (userCheck.rows.length > 0) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await pool.query(
-      'INSERT INTO users (full_name, email, password) VALUES ($1, $2, $3) RETURNING id, full_name, email',
+      'INSERT INTO vanyausers (full_name, email, password) VALUES ($1, $2, $3) RETURNING id, full_name, email',
       [fullName, email, hashedPassword]
     );
 
@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    const user = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = await pool.query('SELECT * FROM vanyausers WHERE email = $1', [email]);
     if (user.rows.length === 0) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
@@ -83,7 +83,7 @@ router.post('/login', async (req, res) => {
 ========================= */
 router.get('/users', async (req, res) => {
   try {
-    const users = await pool.query('SELECT id, full_name, email, created_at FROM users ORDER BY id ASC');
+    const users = await pool.query('SELECT id, full_name, email, created_at FROM vanyausers ORDER BY id ASC');
     res.json(users.rows);
   } catch (error) {
     console.error(error.message);
@@ -99,7 +99,7 @@ router.get('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const user = await pool.query(
-      'SELECT id, full_name, email, created_at FROM users WHERE id = $1',
+      'SELECT id, full_name, email, created_at FROM vanyausers WHERE id = $1',
       [id]
     );
 
@@ -124,7 +124,7 @@ router.put('/users/:id', async (req, res) => {
     const { fullName, email, password } = req.body;
 
     // Check if user exists
-    const userCheck = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    const userCheck = await pool.query('SELECT * FROM vanyausers WHERE id = $1', [id]);
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -135,7 +135,7 @@ router.put('/users/:id', async (req, res) => {
     }
 
     const updatedUser = await pool.query(
-      'UPDATE users SET full_name = $1, email = $2, password = $3 WHERE id = $4 RETURNING id, full_name, email',
+      'UPDATE vanyausers SET full_name = $1, email = $2, password = $3 WHERE id = $4 RETURNING id, full_name, email',
       [fullName || userCheck.rows[0].full_name, email || userCheck.rows[0].email, hashedPassword, id]
     );
 
@@ -158,12 +158,12 @@ router.delete('/users/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const userCheck = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+    const userCheck = await pool.query('SELECT * FROM vanyausers WHERE id = $1', [id]);
     if (userCheck.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    await pool.query('DELETE FROM users WHERE id = $1', [id]);
+    await pool.query('DELETE FROM vanyausers WHERE id = $1', [id]);
 
     res.json({ message: 'User deleted successfully' });
 
