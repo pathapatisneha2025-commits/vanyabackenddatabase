@@ -8,7 +8,7 @@ const pool = require("../db"); // PostgreSQL pool
 router.get("/all", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT * FROM orders ORDER BY created_at DESC
+      SELECT * FROM vanyaorders ORDER BY created_at DESC
     `);
     res.json(result.rows);
   } catch (err) {
@@ -41,7 +41,7 @@ router.get("/:order_id", async (req, res) => {
   const { order_id } = req.params;
   try {
     const result = await pool.query(
-      "SELECT * FROM orders WHERE id=$1",
+      "SELECT * FROM vanyaorders WHERE id=$1",
       [order_id]
     );
     if (result.rows.length === 0)
@@ -63,7 +63,7 @@ router.get("/user/:user_id", async (req, res) => {
   const { user_id } = req.params;
   try {
     const result = await pool.query(
-      "SELECT * FROM orders WHERE user_id = $1",
+      "SELECT * FROM vanyaorders WHERE user_id = $1",
       [user_id]
     );
     res.json(result.rows);
@@ -166,7 +166,7 @@ router.put("/update/:order_id", async (req, res) => {
     values.push(order_id);
 
     const result = await pool.query(
-      `UPDATE orders SET ${fields.join(", ")} WHERE id=$${idx} RETURNING *`,
+      `UPDATE vanyaorders SET ${fields.join(", ")} WHERE id=$${idx} RETURNING *`,
       values
     );
 
@@ -183,7 +183,7 @@ router.put("/update/:order_id", async (req, res) => {
 router.delete("/delete/:order_id", async (req, res) => {
   const { order_id } = req.params;
   try {
-    await pool.query("DELETE FROM orders WHERE id=$1", [order_id]);
+    await pool.query("DELETE FROM vanyaorders WHERE id=$1", [order_id]);
     res.json({ message: "Order deleted successfully" });
   } catch (err) {
     console.error(err);
