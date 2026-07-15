@@ -35,5 +35,92 @@ router.post("/add", async (req, res) => {
     res.status(500).json({ error: "Failed to add review" });
   }
 });
+// Add wishlist
+router.post("/wishlist/add", async(req,res)=>{
+
+try{
+
+const {user_id,product_id}=req.body;
+
+
+const result = await pool.query(
+`
+INSERT INTO wishlist(user_id,product_id)
+VALUES($1,$2)
+RETURNING *
+`,
+[
+user_id,
+product_id
+]
+);
+
+
+res.json({
+success:true,
+wishlist:result.rows[0]
+});
+
+
+}
+catch(err){
+
+console.log(err);
+
+res.status(500).json({
+success:false,
+error:"Wishlist add failed"
+});
+
+}
+
+});
+
+
+// Get wishlist by user_id
+router.get("/wishlist/:user_id", async(req,res)=>{
+
+try{
+
+const {user_id}=req.params;
+
+
+const result = await pool.query(
+`
+SELECT 
+    w.id AS wishlist_id,
+    w.created_at,
+    p.*
+FROM wishlist w
+JOIN products p
+ON w.product_id = p.id
+WHERE w.user_id=$1
+ORDER BY w.created_at DESC
+`,
+[
+user_id
+]
+);
+
+
+res.json({
+success:true,
+wishlist:result.rows
+});
+
+
+}
+catch(err){
+
+console.log(err);
+
+res.status(500).json({
+success:false,
+error:"Failed to fetch wishlist"
+});
+
+}
+
+});
 
 module.exports = router;
