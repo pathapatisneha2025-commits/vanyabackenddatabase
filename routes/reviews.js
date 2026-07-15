@@ -43,7 +43,7 @@ try{
 const {user_id,product_id}=req.body;
 
 
-const result = await pool.query(
+const result = await db.query(
 `
 INSERT INTO wishlist(user_id,product_id)
 VALUES($1,$2)
@@ -85,7 +85,7 @@ try{
 const {user_id}=req.params;
 
 
-const result = await pool.query(
+const result = await db.query(
 `
 SELECT 
     w.id AS wishlist_id,
