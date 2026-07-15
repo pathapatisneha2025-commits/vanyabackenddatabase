@@ -92,7 +92,7 @@ SELECT
     w.created_at,
     p.*
 FROM wishlist w
-JOIN products p
+JOIN vanayaproducts  p
 ON w.product_id = p.id
 WHERE w.user_id=$1
 ORDER BY w.created_at DESC
