@@ -122,5 +122,53 @@ error:"Failed to fetch wishlist"
 }
 
 });
+// Remove product from wishlist
+router.delete("/wishlist/delete/:id", async(req,res)=>{
 
+try{
+
+const {id}=req.params;
+
+
+const result = await db.query(
+`
+DELETE FROM wishlist
+WHERE id=$1
+RETURNING *
+`,
+[
+id
+]
+);
+
+
+if(result.rows.length===0){
+
+return res.json({
+success:false,
+message:"Wishlist item not found"
+});
+
+}
+
+
+res.json({
+success:true,
+message:"Removed from wishlist"
+});
+
+
+}
+catch(err){
+
+console.log(err);
+
+res.status(500).json({
+success:false,
+error:"Wishlist delete failed"
+});
+
+}
+
+});
 module.exports = router;
