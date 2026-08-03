@@ -7,38 +7,77 @@ const pool = require("../db"); // PostgreSQL pool
 ====================================================== */
 router.get("/:user_id", async (req, res) => {
   const { user_id } = req.params;
+
   try {
     const result = await pool.query(`
       SELECT 
         ci.id AS cart_id,
         ci.quantity,
+
         p.id AS product_id,
         p.name,
+        p.category,
+        p.sub_category,
         p.price,
         p.img_url,
+
         (ci.quantity * p.price) AS subtotal
+
       FROM cart_items ci
-      JOIN vanayaproducts p ON ci.product_id = p.id
+
+      JOIN vanayaproducts p 
+      ON ci.product_id = p.id
+
       WHERE ci.user_id = $1
+
       ORDER BY ci.id ASC
+
     `, [user_id]);
+
 
     const cartItems = result.rows.map(row => ({
       id: row.cart_id,
+
+      // Product ID for product coupon
       product_id: row.product_id,
+
       name: row.name,
-      price: parseFloat(row.price),
+
+      // Category for category coupon
+      category: row.category,
+
+      sub_category: row.sub_category,
+
+      price: Number(row.price),
+
       img_url: row.img_url,
+
       quantity: row.quantity,
-      subtotal: parseFloat(row.subtotal)
+
+      subtotal: Number(row.subtotal)
     }));
 
-    const total = cartItems.reduce((acc, item) => acc + item.subtotal, 0);
 
-    res.json({ items: cartItems, total });
+    const total = cartItems.reduce(
+      (acc, item) => acc + item.subtotal,
+      0
+    );
+
+
+    res.json({
+      items: cartItems,
+      total
+    });
+
+
   } catch (err) {
+
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+
+    res.status(500).json({
+      error: "Internal server error"
+    });
+
   }
 });
 /* ======================================================
