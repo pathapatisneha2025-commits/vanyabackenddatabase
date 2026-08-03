@@ -8,7 +8,7 @@ router.get("/:productId", async (req, res) => {
     const { productId } = req.params;
 
     const reviews = await db.query(
-      "SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC",
+      "SELECT * FROM  vanayareviews  WHERE product_id = $1 ORDER BY created_at DESC",
       [productId]
     );
 
