@@ -6,6 +6,7 @@ const Orders = require("./routes/orders");
 const AuthLogin = require("./routes/Auth");
 const Reviews = require("./routes/reviews");
 const Contact = require("./routes/contact");
+const ScanQr = require("./routes/onlinepaymentsettings");
 
 
 
@@ -24,6 +25,7 @@ app.use("/orders",Orders);
 app.use("/auth",AuthLogin);
 app.use("/review",Reviews);
 app.use("/contact",Contact);
+app.use("/scanqr",ScanQr);
 
 
 
