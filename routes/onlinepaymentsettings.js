@@ -103,7 +103,7 @@ POST PAYMENT SETTINGS
 */
 
 router.post(
-  "/settings",
+  "/add",
   upload.single("qrImage"),
   async function (req, res) {
 
