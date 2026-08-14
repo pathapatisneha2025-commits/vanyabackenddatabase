@@ -1,15 +1,14 @@
-const pool = require("../db"); // PostgreSQL pool
+const pool = require("../db");
 
 const express = require("express");
 const multer = require("multer");
-const { Readable } = require("stream");
 const cloudinary = require("cloudinary").v2;
 
 const router = express.Router();
 
 /*
 ================================================
-CLOUDINARY CONFIG
+CLOUDINARY
 ================================================
 */
 
@@ -28,36 +27,32 @@ MULTER
 
 const upload = multer({
   storage: multer.memoryStorage(),
-
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5 MB
+    fileSize: 5 * 1024 * 1024
   },
-
-  fileFilter: (req, file, cb) => {
+  fileFilter: function (req, file, cb) {
 
     if (!file.mimetype.startsWith("image/")) {
-      return cb(
-        new Error("Only image files are allowed")
-      );
+      return cb(new Error("Only image files are allowed"));
     }
 
     cb(null, true);
-  },
+  }
 });
 
 
 /*
 ================================================
 GET PAYMENT SETTINGS
-GET /api/payments/settings
 ================================================
 */
 
-router.get("/settings", async (req, res) => {
+router.get("/settings", async function (req, res) {
 
   try {
 
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT
         id,
         upi_id,
@@ -67,20 +62,21 @@ router.get("/settings", async (req, res) => {
       FROM online_payment_settings
       ORDER BY id DESC
       LIMIT 1
-    `);
+      `
+    );
 
     if (result.rows.length === 0) {
 
       return res.json({
         success: true,
-        settings: null,
+        settings: null
       });
 
     }
 
     return res.json({
       success: true,
-      settings: result.rows[0],
+      settings: result.rows[0]
     });
 
   } catch (error) {
@@ -92,8 +88,7 @@ router.get("/settings", async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to load payment settings",
+      message: "Failed to load payment settings"
     });
 
   }
@@ -104,24 +99,22 @@ router.get("/settings", async (req, res) => {
 /*
 ================================================
 POST PAYMENT SETTINGS
-POST /api/payments/settings
 ================================================
 */
 
 router.post(
   "/settings",
   upload.single("qrImage"),
-
-  async (req, res) => {
+  async function (req, res) {
 
     try {
 
-      const { upiId } = req.body;
+      const upiId = req.body.upiId;
 
 
       /*
       ============================================
-      VALIDATE UPI ID
+      VALIDATE UPI
       ============================================
       */
 
@@ -129,7 +122,7 @@ router.post(
 
         return res.status(400).json({
           success: false,
-          message: "UPI ID is required",
+          message: "UPI ID is required"
         });
 
       }
@@ -137,7 +130,7 @@ router.post(
 
       /*
       ============================================
-      VALIDATE QR IMAGE
+      VALIDATE IMAGE
       ============================================
       */
 
@@ -145,7 +138,7 @@ router.post(
 
         return res.status(400).json({
           success: false,
-          message: "QR image is required",
+          message: "QR image is required"
         });
 
       }
@@ -153,49 +146,34 @@ router.post(
 
       /*
       ============================================
-      UPLOAD QR IMAGE TO CLOUDINARY
+      UPLOAD TO CLOUDINARY
       ============================================
       */
 
-      const uploadToCloudinary = () => {
-
-        return new Promise(
-          (resolve, reject) => {
-
-            const stream =
-              cloudinary.uploader.upload_stream(
-                {
-                  folder:
-                    "online-payment-qr",
-
-                  resource_type:
-                    "image",
-                },
-
-                (error, result) => {
-
-                  if (error) {
-                    reject(error);
-                  } else {
-                    resolve(result);
-                  }
-
-                }
-              );
-
-
-            Readable
-              .from(req.file.buffer)
-              .pipe(stream);
-
-          }
-        );
-
-      };
-
-
       const cloudinaryResult =
-        await uploadToCloudinary();
+        await new Promise(function (resolve, reject) {
+
+          const stream =
+            cloudinary.uploader.upload_stream(
+              {
+                folder: "online-payment-qr",
+                resource_type: "image"
+              },
+              function (error, result) {
+
+                if (error) {
+                  reject(error);
+                  return;
+                }
+
+                resolve(result);
+
+              }
+            );
+
+          stream.end(req.file.buffer);
+
+        });
 
 
       const qrImageUrl =
@@ -204,17 +182,19 @@ router.post(
 
       /*
       ============================================
-      CHECK EXISTING PAYMENT SETTINGS
+      CHECK EXISTING RECORD
       ============================================
       */
 
       const existing =
-        await pool.query(`
+        await pool.query(
+          `
           SELECT id
           FROM online_payment_settings
           ORDER BY id DESC
           LIMIT 1
-        `);
+          `
+        );
 
 
       let result;
@@ -222,55 +202,61 @@ router.post(
 
       /*
       ============================================
-      UPDATE EXISTING SETTINGS
+      UPDATE
       ============================================
       */
 
       if (existing.rows.length > 0) {
 
-        result = await pool.query(
-          `
-          UPDATE online_payment_settings
-          SET
-            upi_id = $1,
-            qr_image_url = $2,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = $3
-          RETURNING *
-          `,
-          [
-            upiId.trim(),
-            qrImageUrl,
-            existing.rows[0].id,
-          ]
-        );
+        result =
+          await pool.query(
+            `
+            UPDATE online_payment_settings
+            SET
+              upi_id = $1,
+              qr_image_url = $2,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = $3
+            RETURNING *
+            `,
+            [
+              upiId.trim(),
+              qrImageUrl,
+              existing.rows[0].id
+            ]
+          );
 
       }
 
 
       /*
       ============================================
-      INSERT FIRST SETTINGS
+      INSERT
       ============================================
       */
 
       else {
 
-        result = await pool.query(
-          `
-          INSERT INTO online_payment_settings
-          (
-            upi_id,
-            qr_image_url
-          )
-          VALUES ($1, $2)
-          RETURNING *
-          `,
-          [
-            upiId.trim(),
-            qrImageUrl,
-          ]
-        );
+        result =
+          await pool.query(
+            `
+            INSERT INTO online_payment_settings
+            (
+              upi_id,
+              qr_image_url
+            )
+            VALUES
+            (
+              $1,
+              $2
+            )
+            RETURNING *
+            `,
+            [
+              upiId.trim(),
+              qrImageUrl
+            ]
+          );
 
       }
 
@@ -282,19 +268,12 @@ router.post(
       */
 
       return res.json({
-
         success: true,
-
-        message:
-          "Payment QR saved successfully",
-
-        qrImageUrl:
-          qrImageUrl,
-
-        settings:
-          result.rows[0],
-
+        message: "Payment QR saved successfully",
+        qrImageUrl: qrImageUrl,
+        settings: result.rows[0]
       });
+
 
     } catch (error) {
 
@@ -304,13 +283,10 @@ router.post(
       );
 
       return res.status(500).json({
-
         success: false,
-
         message:
           error.message ||
-          "Failed to save payment settings",
-
+          "Failed to save payment settings"
       });
 
     }
