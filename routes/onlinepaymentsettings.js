@@ -29,7 +29,7 @@ GET PAYMENT SETTINGS
 
 router.get("/settings", async (req, res) => {
   try {
-    const result = await pool.query(`
+    const result = await db.query(`
       SELECT
         id,
         upi_id,
@@ -141,7 +141,7 @@ router.post(
       */
 
       const existing =
-        await pool.query(`
+        await db.query(`
           SELECT id
           FROM online_payment_settings
           ORDER BY id DESC
@@ -152,7 +152,7 @@ router.post(
 
       if (existing.rows.length > 0) {
 
-        result = await pool.query(
+        result = await db.query(
           `
           UPDATE online_payment_settings
           SET
