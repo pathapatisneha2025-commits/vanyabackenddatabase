@@ -987,7 +987,7 @@ router.put("/payment/approve/:id", async (req, res) => {
     // --------------------------------------------------------
     // Get order
     // --------------------------------------------------------
-    const [orders] = await db.query(
+    const [orders] = await pool.query(
       `
       SELECT
         id,
@@ -1049,7 +1049,7 @@ router.put("/payment/approve/:id", async (req, res) => {
     // --------------------------------------------------------
     // Update payment + order status
     // --------------------------------------------------------
-    await db.query(
+    await pool.query(
       `
       UPDATE orders
       SET
@@ -1066,7 +1066,7 @@ router.put("/payment/approve/:id", async (req, res) => {
     // --------------------------------------------------------
     // Get updated order
     // --------------------------------------------------------
-    const [updatedOrders] = await db.query(
+    const [updatedOrders] = await pool.query(
       `
       SELECT *
       FROM orders
@@ -1128,7 +1128,7 @@ router.put("/payment/reject/:id", async (req, res) => {
     // --------------------------------------------------------
     // Get order
     // --------------------------------------------------------
-    const [orders] = await db.query(
+    const [orders] = await pool.query(
       `
       SELECT
         id,
@@ -1180,7 +1180,7 @@ router.put("/payment/reject/:id", async (req, res) => {
     // --------------------------------------------------------
     // Update payment + order status
     // --------------------------------------------------------
-    await db.query(
+    await pool.query(
       `
       UPDATE orders
       SET
@@ -1200,7 +1200,7 @@ router.put("/payment/reject/:id", async (req, res) => {
     // --------------------------------------------------------
     // Get updated order
     // --------------------------------------------------------
-    const [updatedOrders] = await db.query(
+    const [updatedOrders] = await pool.query(
       `
       SELECT *
       FROM orders
