@@ -76,56 +76,111 @@ router.get("/user/:user_id", async (req, res) => {
    CREATE NEW ORDER
 ====================================================== */
 router.post("/add", async (req, res) => {
-  const { formData, cartItems, paymentMethod, totalAmount, user_id } = req.body;
-
-  if (!formData || !cartItems || cartItems.length === 0) {
-    return res.status(400).json({ message: "Invalid order data" });
-  }
-
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-
-    // Insert order
-    const insertOrderQuery = `
-    INSERT INTO vanyaorders
-(full_name, phone, email, pin_code, city, state, address, payment_method, total_amount, items, user_id)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-RETURNING id
-    `;
-    const orderValues = [
-      formData.fullName,
-      formData.phone,
-      formData.email,
-      formData.pinCode,
-      formData.city,
-      formData.state,
-      formData.address,
+    const {
+      formData,
+      cartItems,
       paymentMethod,
       totalAmount,
-      JSON.stringify(cartItems),
-        user_id  // <-- pass user_id here
+      user_id,
+      paymentStatus
+    } = req.body || {};
 
-    ];
-
-    const result = await client.query(insertOrderQuery, orderValues);
-    const orderId = result.rows[0].id;
-
-    // Delete cart items for this user
-    if (user_id) {
-      await client.query(`DELETE FROM cart_items WHERE user_id = $1`, [user_id]);
+    if (!formData || !Array.isArray(cartItems) || cartItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order data"
+      });
     }
 
-    await client.query('COMMIT');
+    const client = await pool.connect();
 
-    res.status(201).json({ message: "Order placed successfully", orderId });
+    try {
+      await client.query("BEGIN");
+
+      const insertOrderQuery = `
+        INSERT INTO vanyaorders
+        (
+          full_name,
+          phone,
+          email,
+          pin_code,
+          city,
+          state,
+          address,
+          payment_method,
+          total_amount,
+          items,
+          user_id,
+          payment_status,
+          order_status
+        )
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        RETURNING id
+      `;
+
+      const orderValues = [
+        formData.fullName,
+        formData.phone,
+        formData.email,
+        formData.pinCode,
+        formData.city,
+        formData.state,
+        formData.address,
+        paymentMethod,
+        totalAmount,
+        JSON.stringify(cartItems),
+        user_id,
+        paymentStatus || "pending",
+        paymentMethod === "cod"
+          ? "confirmed"
+          : "payment_pending"
+      ];
+
+      const result = await client.query(
+        insertOrderQuery,
+        orderValues
+      );
+
+      const orderId = result.rows[0].id;
+
+      if (user_id) {
+        await client.query(
+          `DELETE FROM cart_items WHERE user_id = $1`,
+          [user_id]
+        );
+      }
+
+      await client.query("COMMIT");
+
+      return res.status(201).json({
+        success: true,
+        message:
+          paymentMethod === "upi"
+            ? "Payment proof submitted. Waiting for admin approval."
+            : "Order placed successfully",
+        orderId
+      });
+
+    } catch (err) {
+      await client.query("ROLLBACK");
+      console.error("ORDER INSERT ERROR:", err);
+
+      return res.status(500).json({
+        success: false,
+        message: "Internal server error"
+      });
+    } finally {
+      client.release();
+    }
+
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  } finally {
-    client.release();
+    console.error("REQUEST ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Invalid request"
+    });
   }
 });
 
