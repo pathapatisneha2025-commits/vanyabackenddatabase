@@ -964,4 +964,266 @@ router.use(
   }
 );
 
+// ============================================================
+// APPROVE ONLINE PAYMENT
+// PUT /orders/payment/approve/:id
+// ============================================================
+router.put("/payment/approve/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // If you have admin authentication, replace this with
+    // req.user.id or your actual admin ID.
+    const paymentVerifiedBy =
+      req.body.payment_verified_by || null;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Get order
+    // --------------------------------------------------------
+    const [orders] = await db.query(
+      `
+      SELECT
+        id,
+        payment_method,
+        payment_status,
+        payment_screenshot,
+        order_status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const order = orders[0];
+
+    // --------------------------------------------------------
+    // Only online/UPI payments should be manually approved
+    // --------------------------------------------------------
+    if (
+      order.payment_method !== "upi" &&
+      order.payment_method !== "online"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment approval is only available for online/UPI orders",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Screenshot is required before approval
+    // --------------------------------------------------------
+    if (!order.payment_screenshot) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment screenshot has not been uploaded by the customer",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Prevent approving an already verified payment
+    // --------------------------------------------------------
+    if (order.payment_status === "verified") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment is already approved",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Update payment + order status
+    // --------------------------------------------------------
+    await db.query(
+      `
+      UPDATE orders
+      SET
+        payment_status = 'verified',
+        order_status = 'confirmed',
+        payment_verified_at = NOW(),
+        payment_verified_by = ?,
+        payment_rejected_reason = NULL
+      WHERE id = ?
+      `,
+      [paymentVerifiedBy, id]
+    );
+
+    // --------------------------------------------------------
+    // Get updated order
+    // --------------------------------------------------------
+    const [updatedOrders] = await db.query(
+      `
+      SELECT *
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment approved successfully",
+      order: updatedOrders[0],
+    });
+  } catch (error) {
+    console.error("Approve payment error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to approve payment",
+      error: error.message,
+    });
+  }
+});
+
+
+// ============================================================
+// REJECT ONLINE PAYMENT
+// PUT /orders/payment/reject/:id
+// ============================================================
+router.put("/payment/reject/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      payment_rejected_reason,
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Order ID is required",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Rejection reason is required
+    // --------------------------------------------------------
+    if (
+      !payment_rejected_reason ||
+      !payment_rejected_reason.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment rejection reason is required",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Get order
+    // --------------------------------------------------------
+    const [orders] = await db.query(
+      `
+      SELECT
+        id,
+        payment_method,
+        payment_status,
+        payment_screenshot,
+        order_status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (orders.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    const order = orders[0];
+
+    // --------------------------------------------------------
+    // Only online/UPI payments
+    // --------------------------------------------------------
+    if (
+      order.payment_method !== "upi" &&
+      order.payment_method !== "online"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment rejection is only available for online/UPI orders",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Prevent rejecting an already verified payment
+    // --------------------------------------------------------
+    if (order.payment_status === "verified") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "A verified payment cannot be rejected",
+      });
+    }
+
+    // --------------------------------------------------------
+    // Update payment + order status
+    // --------------------------------------------------------
+    await db.query(
+      `
+      UPDATE orders
+      SET
+        payment_status = 'rejected',
+        order_status = 'payment_rejected',
+        payment_rejected_reason = ?,
+        payment_verified_at = NULL,
+        payment_verified_by = NULL
+      WHERE id = ?
+      `,
+      [
+        payment_rejected_reason.trim(),
+        id,
+      ]
+    );
+
+    // --------------------------------------------------------
+    // Get updated order
+    // --------------------------------------------------------
+    const [updatedOrders] = await db.query(
+      `
+      SELECT *
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Payment rejected successfully",
+      order: updatedOrders[0],
+    });
+  } catch (error) {
+    console.error("Reject payment error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reject payment",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;
