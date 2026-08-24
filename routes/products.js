@@ -49,49 +49,132 @@ router.post(
   ]),
   async (req, res) => {
     try {
-      const { name, cat, subCategory, price, oldPrice, stock, type } = req.body; // <-- added subCategory
+      const {
+        name,
+        cat,
+        subCategory,
+        price,
+        oldPrice,
+        stock,
+        type,
+        variants, // NEW
+      } = req.body;
+
       const discount = calculateDiscount(price, oldPrice);
 
-      // Upload main image
+      // ============================================================
+      // PARSE VARIANTS
+      // ============================================================
+      let parsedVariants = [];
+
+      if (variants) {
+        try {
+          parsedVariants =
+            typeof variants === "string"
+              ? JSON.parse(variants)
+              : variants;
+
+          // Make sure variants is an array
+          if (!Array.isArray(parsedVariants)) {
+            parsedVariants = [];
+          }
+        } catch (error) {
+          console.error("Error parsing variants:", error);
+          parsedVariants = [];
+        }
+      }
+
+      // ============================================================
+      // UPLOAD MAIN IMAGE
+      // ============================================================
       let mainImageUrl = null;
+
       if (req.files?.img_url?.length) {
-        const result = await uploadToCloudinary(req.files.img_url[0].buffer);
+        const result = await uploadToCloudinary(
+          req.files.img_url[0].buffer
+        );
+
         mainImageUrl = result.secure_url;
       }
 
-      // Upload thumbnails
+      // ============================================================
+      // UPLOAD THUMBNAILS
+      // ============================================================
       let thumbnailUrls = [];
+
       if (req.files?.thumbnails?.length) {
         for (const file of req.files.thumbnails) {
           const result = await uploadToCloudinary(file.buffer);
+
           thumbnailUrls.push(result.secure_url);
         }
       }
 
-      // Insert into DB including subCategory
+      // ============================================================
+      // INSERT PRODUCT
+      // ============================================================
       const result = await pool.query(
         `INSERT INTO vanayaproducts 
-          (name, category, sub_category, price, old_price, discount, stock, type, img_url, thumbnails, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CURRENT_TIMESTAMP)
+          (
+            name,
+            category,
+            sub_category,
+            price,
+            old_price,
+            discount,
+            stock,
+            type,
+            img_url,
+            thumbnails,
+            variants,
+            created_at
+          )
+         VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11::jsonb,
+            CURRENT_TIMESTAMP
+          )
          RETURNING *`,
         [
           name,
           cat,
-          subCategory || null, // <-- save subCategory
-          Number(price),
-          Number(oldPrice),
+          subCategory || null,
+          Number(price) || 0,
+          Number(oldPrice) || 0,
           discount,
-          Number(stock),
-          type || 'Regular',
+          Number(stock) || 0,
+          type || "Regular",
           mainImageUrl,
           JSON.stringify(thumbnailUrls),
+          JSON.stringify(parsedVariants),
         ]
       );
 
-      res.json({ product: result.rows[0] });
+      // ============================================================
+      // RESPONSE
+      // ============================================================
+      res.status(201).json({
+        success: true,
+        product: result.rows[0],
+      });
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: "Server error" });
+      console.error("ADD PRODUCT ERROR:", err);
+
+      res.status(500).json({
+        success: false,
+        error: "Server error",
+        message: err.message,
+      });
     }
   }
 );
