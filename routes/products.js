@@ -184,12 +184,44 @@ router.post(
 ====================================================== */
 router.put(
   "/update/:id",
-  upload.fields([
-    { name: "img_url", maxCount: 1 },
-    { name: "thumbnails", maxCount: 5 },
-  ]),
+
+  // ============================================================
+  // IMPORTANT
+  // upload.any() allows:
+  //
+  // img_url
+  // thumbnails
+  // variant_0_main
+  // variant_0_thumbnails
+  // variant_1_main
+  // variant_1_thumbnails
+  // variant_2_main
+  // variant_2_thumbnails
+  //
+  // etc.
+  // ============================================================
+
+  upload.any(),
+
   async (req, res) => {
     try {
+      console.log("======================================");
+      console.log("UPDATE PRODUCT REQUEST");
+      console.log("Product ID:", req.params.id);
+      console.log("Body:", req.body);
+      console.log(
+        "Files:",
+        req.files?.map((file) => ({
+          fieldname: file.fieldname,
+          originalname: file.originalname,
+        }))
+      );
+      console.log("======================================");
+
+      // ============================================================
+      // BASIC DATA
+      // ============================================================
+
       const {
         name,
         cat,
@@ -198,19 +230,47 @@ router.put(
         oldPrice,
         stock,
         type,
+
         existingMainImage,
         existingThumbnails,
-        variants, // NEW
+
+        variants,
+        variantImageMeta,
       } = req.body;
 
       // ============================================================
-      // CALCULATE DISCOUNT
+      // HELPER
       // ============================================================
-      const discount = calculateDiscount(price, oldPrice);
+
+      const files = Array.isArray(req.files)
+        ? req.files
+        : [];
+
+      const getFilesByField = (fieldName) => {
+        return files.filter(
+          (file) => file.fieldname === fieldName
+        );
+      };
+
+      const getFirstFileByField = (fieldName) => {
+        return files.find(
+          (file) => file.fieldname === fieldName
+        );
+      };
+
+      // ============================================================
+      // CALCULATE PRODUCT DISCOUNT
+      // ============================================================
+
+      const discount = calculateDiscount(
+        price,
+        oldPrice
+      );
 
       // ============================================================
       // PARSE VARIANTS
       // ============================================================
+
       let parsedVariants = [];
 
       if (variants) {
@@ -220,124 +280,544 @@ router.put(
               ? JSON.parse(variants)
               : variants;
 
-          // Make sure variants is an array
           if (!Array.isArray(parsedVariants)) {
             parsedVariants = [];
           }
         } catch (error) {
-          console.error("Error parsing variants:", error);
+          console.error(
+            "ERROR PARSING VARIANTS:",
+            error
+          );
+
           parsedVariants = [];
         }
       }
 
       // ============================================================
-      // MAIN IMAGE
+      // PARSE VARIANT IMAGE METADATA
       // ============================================================
-      let mainImageUrl = existingMainImage || null;
 
-      if (req.files?.img_url?.length) {
-        const result = await uploadToCloudinary(
-          req.files.img_url[0].buffer
-        );
+      let parsedVariantImageMeta = [];
 
-        mainImageUrl = result.secure_url;
+      if (variantImageMeta) {
+        try {
+          parsedVariantImageMeta =
+            typeof variantImageMeta === "string"
+              ? JSON.parse(variantImageMeta)
+              : variantImageMeta;
+
+          if (
+            !Array.isArray(
+              parsedVariantImageMeta
+            )
+          ) {
+            parsedVariantImageMeta = [];
+          }
+        } catch (error) {
+          console.error(
+            "ERROR PARSING VARIANT IMAGE META:",
+            error
+          );
+
+          parsedVariantImageMeta = [];
+        }
       }
 
       // ============================================================
-      // THUMBNAILS
+      // PRODUCT MAIN IMAGE
       // ============================================================
+
+      let mainImageUrl =
+        existingMainImage || null;
+
+      const mainImageFile =
+        getFirstFileByField("img_url");
+
+      if (mainImageFile) {
+        console.log(
+          "Uploading new product main image..."
+        );
+
+        const result =
+          await uploadToCloudinary(
+            mainImageFile.buffer
+          );
+
+        mainImageUrl =
+          result.secure_url;
+
+        console.log(
+          "Product main image uploaded:",
+          mainImageUrl
+        );
+      }
+
+      // ============================================================
+      // PRODUCT THUMBNAILS
+      // ============================================================
+
       let thumbnailUrls = [];
 
+      // Existing product thumbnails
       if (existingThumbnails) {
         try {
           thumbnailUrls =
-            typeof existingThumbnails === "string"
-              ? JSON.parse(existingThumbnails)
+            typeof existingThumbnails ===
+            "string"
+              ? JSON.parse(
+                  existingThumbnails
+                )
               : existingThumbnails;
 
-          if (!Array.isArray(thumbnailUrls)) {
+          if (
+            !Array.isArray(
+              thumbnailUrls
+            )
+          ) {
             thumbnailUrls = [];
           }
         } catch (error) {
-          console.error("Error parsing existing thumbnails:", error);
+          console.error(
+            "ERROR PARSING PRODUCT THUMBNAILS:",
+            error
+          );
+
           thumbnailUrls = [];
         }
       }
 
-      // Add newly uploaded thumbnails
-      if (req.files?.thumbnails?.length) {
-        for (const file of req.files.thumbnails) {
-          const result = await uploadToCloudinary(file.buffer);
+      // New product thumbnails
+      const productThumbnailFiles =
+        getFilesByField(
+          "thumbnails"
+        );
 
-          thumbnailUrls.push(result.secure_url);
+      if (
+        productThumbnailFiles.length
+      ) {
+        console.log(
+          "Uploading product thumbnails:",
+          productThumbnailFiles.length
+        );
+
+        for (const file of productThumbnailFiles) {
+          const result =
+            await uploadToCloudinary(
+              file.buffer
+            );
+
+          thumbnailUrls.push(
+            result.secure_url
+          );
         }
       }
 
       // ============================================================
-      // UPDATE PRODUCT
+      // PROCESS COLOUR VARIANT IMAGES
       // ============================================================
-      const result = await pool.query(
-        `UPDATE vanayaproducts
-         SET
-           name=$1,
-           category=$2,
-           sub_category=$3,
-           price=$4,
-           old_price=$5,
-           discount=$6,
-           stock=$7,
-           type=$8,
-           img_url=$9,
-           thumbnails=$10,
-           variants=$11::jsonb,
-           updated_at=CURRENT_TIMESTAMP
-         WHERE id=$12
-         RETURNING *`,
-        [
-          name,
-          cat,
-          subCategory || null,
-          Number(price) || 0,
-          Number(oldPrice) || 0,
-          discount,
-          Number(stock) || 0,
-          type || "Regular",
-          mainImageUrl,
-          JSON.stringify(thumbnailUrls),
-          JSON.stringify(parsedVariants),
-          req.params.id,
-        ]
+
+      const finalVariants =
+        [];
+
+      for (
+        let index = 0;
+        index < parsedVariants.length;
+        index++
+      ) {
+        const variant =
+          parsedVariants[index];
+
+        const meta =
+          parsedVariantImageMeta.find(
+            (item) =>
+              Number(
+                item.colourIndex
+              ) === index
+          ) || {};
+
+        // ========================================================
+        // BASIC VARIANT
+        // ========================================================
+
+        const cleanVariant = {
+          colour:
+            variant.colour || "",
+        };
+
+        // ========================================================
+        // DRESS VARIANT
+        // ========================================================
+
+        if (
+          Array.isArray(
+            variant.sizes
+          )
+        ) {
+          cleanVariant.sizes =
+            variant.sizes.map(
+              (size) => ({
+                size:
+                  size.size || "",
+
+                price:
+                  Number(
+                    size.price || 0
+                  ),
+
+                oldPrice:
+                  Number(
+                    size.oldPrice ||
+                      size.old_price ||
+                      0
+                  ),
+
+                discount:
+                  Number(
+                    size.discount ||
+                      0
+                  ),
+
+                stock:
+                  Number(
+                    size.stock || 0
+                  ),
+              })
+            );
+        }
+
+        // ========================================================
+        // SAREE VARIANT
+        // ========================================================
+
+        else {
+          cleanVariant.price =
+            Number(
+              variant.price || 0
+            );
+
+          cleanVariant.oldPrice =
+            Number(
+              variant.oldPrice ||
+                variant.old_price ||
+                0
+            );
+
+          cleanVariant.discount =
+            Number(
+              variant.discount ||
+                0
+            );
+
+          cleanVariant.stock =
+            Number(
+              variant.stock || 0
+            );
+        }
+
+        // ========================================================
+        // EXISTING MAIN IMAGE
+        // ========================================================
+
+        let variantMainImage =
+          meta.existingMainImage ||
+          variant.existingMainImage ||
+          "";
+
+        // ========================================================
+        // NEW MAIN IMAGE
+        //
+        // Example:
+        //
+        // variant_0_main
+        // variant_1_main
+        // variant_2_main
+        // ========================================================
+
+        const mainImageField =
+          meta.mainImageField ||
+          variant.mainImageField ||
+          "";
+
+        if (mainImageField) {
+          const variantMainFile =
+            getFirstFileByField(
+              mainImageField
+            );
+
+          if (variantMainFile) {
+            console.log(
+              `Uploading main image for variant ${index}...`
+            );
+
+            const result =
+              await uploadToCloudinary(
+                variantMainFile.buffer
+              );
+
+            variantMainImage =
+              result.secure_url;
+
+            console.log(
+              `Variant ${index} main image:`,
+              variantMainImage
+            );
+          }
+        }
+
+        // ========================================================
+        // EXISTING VARIANT THUMBNAILS
+        // ========================================================
+
+        let variantThumbnailUrls =
+          [];
+
+        if (
+          Array.isArray(
+            meta.existingThumbnails
+          )
+        ) {
+          variantThumbnailUrls =
+            meta.existingThumbnails.filter(
+              (url) =>
+                typeof url ===
+                "string" &&
+                url.trim() !== ""
+            );
+        } else if (
+          Array.isArray(
+            variant.existingThumbnails
+          )
+        ) {
+          variantThumbnailUrls =
+            variant.existingThumbnails.filter(
+              (url) =>
+                typeof url ===
+                "string" &&
+                url.trim() !== ""
+            );
+        } else if (
+          Array.isArray(
+            variant.thumbnails
+          )
+        ) {
+          variantThumbnailUrls =
+            variant.thumbnails.filter(
+              (url) =>
+                typeof url ===
+                "string" &&
+                url.trim() !== ""
+            );
+        }
+
+        // ========================================================
+        // NEW VARIANT THUMBNAILS
+        //
+        // Example:
+        //
+        // variant_0_thumbnails
+        // variant_1_thumbnails
+        // ========================================================
+
+        const thumbnailField =
+          meta.thumbnailField ||
+          variant.thumbnailField ||
+          `variant_${index}_thumbnails`;
+
+        const variantThumbnailFiles =
+          getFilesByField(
+            thumbnailField
+          );
+
+        if (
+          variantThumbnailFiles.length
+        ) {
+          console.log(
+            `Uploading ${variantThumbnailFiles.length} thumbnails for variant ${index}...`
+          );
+
+          for (
+            const file of variantThumbnailFiles
+          ) {
+            const result =
+              await uploadToCloudinary(
+                file.buffer
+              );
+
+            variantThumbnailUrls.push(
+              result.secure_url
+            );
+          }
+        }
+
+        // ========================================================
+        // ADD IMAGES TO VARIANT
+        // ========================================================
+
+        cleanVariant.mainImage =
+          variantMainImage;
+
+        cleanVariant.thumbnails =
+          variantThumbnailUrls;
+
+        // ========================================================
+        // DO NOT STORE TEMPORARY FRONTEND FIELDS
+        //
+        // We intentionally only store:
+        //
+        // colour
+        // price / oldPrice / discount / stock
+        // sizes
+        // mainImage
+        // thumbnails
+        // ========================================================
+
+        finalVariants.push(
+          cleanVariant
+        );
+      }
+
+      // ============================================================
+      // DEBUG FINAL VARIANTS
+      // ============================================================
+
+      console.log(
+        "======================================"
       );
+
+      console.log(
+        "FINAL VARIANTS:"
+      );
+
+      console.log(
+        JSON.stringify(
+          finalVariants,
+          null,
+          2
+        )
+      );
+
+      console.log(
+        "======================================"
+      );
+
+      // ============================================================
+      // UPDATE DATABASE
+      // ============================================================
+
+      const result =
+        await pool.query(
+          `
+          UPDATE vanayaproducts
+          SET
+            name = $1,
+            category = $2,
+            sub_category = $3,
+            price = $4,
+            old_price = $5,
+            discount = $6,
+            stock = $7,
+            type = $8,
+            img_url = $9,
+            thumbnails = $10,
+            variants = $11::jsonb,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = $12
+          RETURNING *
+          `,
+          [
+            name,
+
+            cat,
+
+            subCategory ||
+              null,
+
+            Number(price) ||
+              0,
+
+            Number(oldPrice) ||
+              0,
+
+            discount,
+
+            Number(stock) ||
+              0,
+
+            type ||
+              "Regular",
+
+            mainImageUrl,
+
+            JSON.stringify(
+              thumbnailUrls
+            ),
+
+            JSON.stringify(
+              finalVariants
+            ),
+
+            req.params.id,
+          ]
+        );
 
       // ============================================================
       // PRODUCT NOT FOUND
       // ============================================================
-      if (!result.rows.length) {
+
+      if (
+        !result.rows.length
+      ) {
         return res.status(404).json({
-          error: "Product not found",
+          success: false,
+          error:
+            "Product not found",
         });
       }
 
       // ============================================================
       // SUCCESS
       // ============================================================
-      res.json({
+
+      return res.status(200).json({
         success: true,
-        product: result.rows[0],
+
+        message:
+          "Product updated successfully",
+
+        product:
+          result.rows[0],
       });
-
     } catch (err) {
-      console.error("UPDATE PRODUCT ERROR:", err);
+      // ============================================================
+      // ERROR
+      // ============================================================
 
-      res.status(500).json({
+      console.error(
+        "======================================"
+      );
+
+      console.error(
+        "UPDATE PRODUCT ERROR:"
+      );
+
+      console.error(err);
+
+      console.error(
+        "======================================"
+      );
+
+      return res.status(500).json({
         success: false,
-        error: "Server error",
-        message: err.message,
+
+        error:
+          "Server error",
+
+        message:
+          err.message,
       });
     }
   }
 );
-
 /* ======================================================
    GET ALL PRODUCTS
 ====================================================== */
