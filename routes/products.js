@@ -190,63 +190,150 @@ router.put(
   ]),
   async (req, res) => {
     try {
-      const { name, cat, subCategory, price, oldPrice, stock, type, existingMainImage, existingThumbnails } = req.body; // <-- added subCategory
+      const {
+        name,
+        cat,
+        subCategory,
+        price,
+        oldPrice,
+        stock,
+        type,
+        existingMainImage,
+        existingThumbnails,
+        variants, // NEW
+      } = req.body;
+
+      // ============================================================
+      // CALCULATE DISCOUNT
+      // ============================================================
       const discount = calculateDiscount(price, oldPrice);
 
-      // --- Main image ---
+      // ============================================================
+      // PARSE VARIANTS
+      // ============================================================
+      let parsedVariants = [];
+
+      if (variants) {
+        try {
+          parsedVariants =
+            typeof variants === "string"
+              ? JSON.parse(variants)
+              : variants;
+
+          // Make sure variants is an array
+          if (!Array.isArray(parsedVariants)) {
+            parsedVariants = [];
+          }
+        } catch (error) {
+          console.error("Error parsing variants:", error);
+          parsedVariants = [];
+        }
+      }
+
+      // ============================================================
+      // MAIN IMAGE
+      // ============================================================
       let mainImageUrl = existingMainImage || null;
+
       if (req.files?.img_url?.length) {
-        const result = await uploadToCloudinary(req.files.img_url[0].buffer);
+        const result = await uploadToCloudinary(
+          req.files.img_url[0].buffer
+        );
+
         mainImageUrl = result.secure_url;
       }
 
-      // --- Thumbnails ---
-      let thumbnailUrls = existingThumbnails ? JSON.parse(existingThumbnails) : [];
+      // ============================================================
+      // THUMBNAILS
+      // ============================================================
+      let thumbnailUrls = [];
+
+      if (existingThumbnails) {
+        try {
+          thumbnailUrls =
+            typeof existingThumbnails === "string"
+              ? JSON.parse(existingThumbnails)
+              : existingThumbnails;
+
+          if (!Array.isArray(thumbnailUrls)) {
+            thumbnailUrls = [];
+          }
+        } catch (error) {
+          console.error("Error parsing existing thumbnails:", error);
+          thumbnailUrls = [];
+        }
+      }
+
+      // Add newly uploaded thumbnails
       if (req.files?.thumbnails?.length) {
         for (const file of req.files.thumbnails) {
           const result = await uploadToCloudinary(file.buffer);
+
           thumbnailUrls.push(result.secure_url);
         }
       }
 
-      // --- Update product in DB ---
+      // ============================================================
+      // UPDATE PRODUCT
+      // ============================================================
       const result = await pool.query(
         `UPDATE vanayaproducts
-         SET name=$1,
-             category=$2,
-             sub_category=$3,  -- <-- added subCategory column
-             price=$4,
-             old_price=$5,
-             discount=$6,
-             stock=$7,
-             type=$8,
-             img_url=$9,
-             thumbnails=$10,
-             updated_at=CURRENT_TIMESTAMP
-         WHERE id=$11
+         SET
+           name=$1,
+           category=$2,
+           sub_category=$3,
+           price=$4,
+           old_price=$5,
+           discount=$6,
+           stock=$7,
+           type=$8,
+           img_url=$9,
+           thumbnails=$10,
+           variants=$11::jsonb,
+           updated_at=CURRENT_TIMESTAMP
+         WHERE id=$12
          RETURNING *`,
         [
           name,
           cat,
-          subCategory || null, // <-- send subCategory
-          Number(price),
-          Number(oldPrice),
+          subCategory || null,
+          Number(price) || 0,
+          Number(oldPrice) || 0,
           discount,
-          Number(stock),
-          type || 'Regular',
+          Number(stock) || 0,
+          type || "Regular",
           mainImageUrl,
           JSON.stringify(thumbnailUrls),
+          JSON.stringify(parsedVariants),
           req.params.id,
         ]
       );
 
-      if (!result.rows.length)
-        return res.status(404).json({ error: "Product not found" });
+      // ============================================================
+      // PRODUCT NOT FOUND
+      // ============================================================
+      if (!result.rows.length) {
+        return res.status(404).json({
+          error: "Product not found",
+        });
+      }
 
-      res.json({ product: result.rows[0] });
+      // ============================================================
+      // SUCCESS
+      // ============================================================
+      res.json({
+        success: true,
+        product: result.rows[0],
+      });
+
     } catch (err) {
-      console.error(err);
-      res.status(500).json({ error: "Server error" });
+      console.error("UPDATE PRODUCT ERROR:", err);
+
+      res.status(500).json({
+        success: false,
+        error: "Server error",
+        message: err.message,
+      });
     }
   }
 );
