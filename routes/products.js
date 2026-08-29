@@ -4,6 +4,8 @@ const pool = require("../db"); // PostgreSQL pool
 const multer = require("multer");
 const { Readable } = require("stream");
 const cloudinary = require("../cloudinary"); // configured Cloudinary instance
+const csvParser = require("csv-parser");
+const XLSX = require("xlsx");
 
 /* ================================
    MULTER MEMORY STORAGE
@@ -27,7 +29,466 @@ const uploadToCloudinary = (buffer, folder = "vanyaproducts") => {
     readable.pipe(stream);
   });
 };
+/* ======================================================
+   BULK UPLOAD PRODUCTS - CSV
+   POST /products/bulk-upload-csv
+====================================================== */
 
+
+
+router.post(
+  "/bulk-upload-csv",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "CSV file is required",
+        });
+      }
+
+      const products = [];
+
+      // ==================================================
+      // PARSE CSV
+      // ==================================================
+
+      const stream = Readable.from(req.file.buffer);
+
+      stream
+        .pipe(csvParser())
+        .on("data", (row) => {
+          products.push(row);
+        })
+        .on("end", async () => {
+          try {
+            if (!products.length) {
+              return res.status(400).json({
+                success: false,
+                message: "CSV file is empty",
+              });
+            }
+
+            const insertedProducts = [];
+            const errors = [];
+
+            // ==================================================
+            // INSERT EACH PRODUCT
+            // ==================================================
+
+            for (let i = 0; i < products.length; i++) {
+              const product = products[i];
+
+              try {
+                const name = product.name?.trim();
+                const category =
+                  product.category?.trim() ||
+                  product.cat?.trim();
+
+                const subCategory =
+                  product.sub_category?.trim() ||
+                  product.subCategory?.trim() ||
+                  null;
+
+                const price =
+                  Number(product.price) || 0;
+
+                const oldPrice =
+                  Number(product.old_price) ||
+                  Number(product.oldPrice) ||
+                  0;
+
+                const stock =
+                  Number(product.stock) || 0;
+
+                const type =
+                  product.type?.trim() ||
+                  "Regular";
+
+                // ============================================
+                // VALIDATION
+                // ============================================
+
+                if (!name) {
+                  throw new Error("Product name is required");
+                }
+
+                if (!category) {
+                  throw new Error("Category is required");
+                }
+
+                const discount = calculateDiscount(
+                  price,
+                  oldPrice
+                );
+
+                // ============================================
+                // INSERT
+                // ============================================
+
+                const result = await pool.query(
+                  `
+                  INSERT INTO vanayaproducts
+                  (
+                    name,
+                    category,
+                    sub_category,
+                    price,
+                    old_price,
+                    discount,
+                    stock,
+                    type,
+                    img_url,
+                    thumbnails,
+                    variants,
+                    created_at
+                  )
+                  VALUES
+                  (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8,
+                    $9,
+                    $10,
+                    $11::jsonb,
+                    CURRENT_TIMESTAMP
+                  )
+                  RETURNING *
+                  `,
+                  [
+                    name,
+                    category,
+                    subCategory,
+                    price,
+                    oldPrice,
+                    discount,
+                    stock,
+                    type,
+                    product.img_url?.trim() || null,
+                    JSON.stringify([]),
+                    JSON.stringify([]),
+                  ]
+                );
+
+                insertedProducts.push(
+                  result.rows[0]
+                );
+              } catch (error) {
+                errors.push({
+                  row: i + 2,
+                  name: product.name || "",
+                  error: error.message,
+                });
+              }
+            }
+
+            // ==================================================
+            // RESPONSE
+            // ==================================================
+
+            return res.status(201).json({
+              success: true,
+              message: "CSV bulk upload completed",
+              totalRows: products.length,
+              inserted: insertedProducts.length,
+              failed: errors.length,
+              errors,
+              products: insertedProducts,
+            });
+          } catch (error) {
+            console.error(
+              "CSV PROCESSING ERROR:",
+              error
+            );
+
+            return res.status(500).json({
+              success: false,
+              message: "Failed to process CSV",
+              error: error.message,
+            });
+          }
+        })
+        .on("error", (error) => {
+          console.error(
+            "CSV PARSE ERROR:",
+            error
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Invalid CSV file",
+            error: error.message,
+          });
+        });
+    } catch (error) {
+      console.error(
+        "CSV UPLOAD ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Server error",
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+/* ======================================================
+   BULK UPLOAD PRODUCTS - EXCEL
+   POST /products/bulk-upload-excel
+====================================================== */
+
+
+router.post(
+  "/bulk-upload-excel",
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: "Excel file is required",
+        });
+      }
+
+      // ==================================================
+      // READ EXCEL FILE
+      // ==================================================
+
+      const workbook = XLSX.read(
+        req.file.buffer,
+        {
+          type: "buffer",
+        }
+      );
+
+      // Get first sheet
+      const sheetName =
+        workbook.SheetNames[0];
+
+      if (!sheetName) {
+        return res.status(400).json({
+          success: false,
+          message: "Excel file contains no sheets",
+        });
+      }
+
+      const worksheet =
+        workbook.Sheets[sheetName];
+
+      // Convert sheet to JSON
+      const products =
+        XLSX.utils.sheet_to_json(
+          worksheet,
+          {
+            defval: "",
+          }
+        );
+
+      // ==================================================
+      // CHECK EMPTY FILE
+      // ==================================================
+
+      if (!products.length) {
+        return res.status(400).json({
+          success: false,
+          message: "Excel file is empty",
+        });
+      }
+
+      const insertedProducts = [];
+      const errors = [];
+
+      // ==================================================
+      // INSERT PRODUCTS
+      // ==================================================
+
+      for (let i = 0; i < products.length; i++) {
+        const product = products[i];
+
+        try {
+          const name =
+            String(
+              product.name || ""
+            ).trim();
+
+          const category =
+            String(
+              product.category ||
+                product.cat ||
+                ""
+            ).trim();
+
+          const subCategory =
+            String(
+              product.sub_category ||
+                product.subCategory ||
+                ""
+            ).trim() || null;
+
+          const price =
+            Number(product.price) || 0;
+
+          const oldPrice =
+            Number(
+              product.old_price ||
+                product.oldPrice ||
+                0
+            );
+
+          const stock =
+            Number(product.stock) || 0;
+
+          const type =
+            String(
+              product.type ||
+                "Regular"
+            ).trim();
+
+          // ==============================================
+          // VALIDATION
+          // ==============================================
+
+          if (!name) {
+            throw new Error(
+              "Product name is required"
+            );
+          }
+
+          if (!category) {
+            throw new Error(
+              "Category is required"
+            );
+          }
+
+          const discount =
+            calculateDiscount(
+              price,
+              oldPrice
+            );
+
+          // ==============================================
+          // INSERT
+          // ==============================================
+
+          const result =
+            await pool.query(
+              `
+              INSERT INTO vanayaproducts
+              (
+                name,
+                category,
+                sub_category,
+                price,
+                old_price,
+                discount,
+                stock,
+                type,
+                img_url,
+                thumbnails,
+                variants,
+                created_at
+              )
+              VALUES
+              (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                $7,
+                $8,
+                $9,
+                $10,
+                $11::jsonb,
+                CURRENT_TIMESTAMP
+              )
+              RETURNING *
+              `,
+              [
+                name,
+                category,
+                subCategory,
+                price,
+                oldPrice,
+                discount,
+                stock,
+                type,
+
+                // Optional image URL
+                String(
+                  product.img_url ||
+                    ""
+                ).trim() || null,
+
+                JSON.stringify([]),
+
+                JSON.stringify([]),
+              ]
+            );
+
+          insertedProducts.push(
+            result.rows[0]
+          );
+        } catch (error) {
+          errors.push({
+            row: i + 2,
+            name:
+              product.name || "",
+            error: error.message,
+          });
+        }
+      }
+
+      // ==================================================
+      // RESPONSE
+      // ==================================================
+
+      return res.status(201).json({
+        success: true,
+        message:
+          "Excel bulk upload completed",
+
+        totalRows:
+          products.length,
+
+        inserted:
+          insertedProducts.length,
+
+        failed:
+          errors.length,
+
+        errors,
+
+        products:
+          insertedProducts,
+      });
+    } catch (error) {
+      console.error(
+        "EXCEL UPLOAD ERROR:",
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Failed to process Excel file",
+        error:
+          error.message,
+      });
+    }
+  }
+);
 /* ======================================================
    HELPER: Calculate Discount %
 ====================================================== */

@@ -14,11 +14,13 @@
     "body-parser": "^2.2.2",
     "cloudinary": "^1.30.0",
     "cors": "^2.8.6",
+    "csv-parser": "^3.2.1",
     "express": "^5.2.1",
-    "multer": "^2.0.2",
+    "multer": "^2.3.0",
     "multer-storage-cloudinary": "^4.0.0",
     "pg": "^8.18.0",
-    "sequelize": "^6.37.7"
+    "sequelize": "^6.37.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
