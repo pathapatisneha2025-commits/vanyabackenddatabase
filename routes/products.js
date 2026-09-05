@@ -502,11 +502,21 @@ const calculateDiscount = (price, oldPrice) => {
 /* ======================================================
    ADD PRODUCT
 ====================================================== */
+const variantUploadFields = [];
+
+for (let i = 0; i < 20; i++) {
+  variantUploadFields.push(
+    { name: `variant_${i}_main`, maxCount: 1 },
+    { name: `variant_${i}_thumbnails`, maxCount: 5 }
+  );
+}
+
 router.post(
   "/add",
   upload.fields([
     { name: "img_url", maxCount: 1 },
     { name: "thumbnails", maxCount: 5 },
+    ...variantUploadFields
   ]),
   async (req, res) => {
     try {
@@ -518,7 +528,8 @@ router.post(
         oldPrice,
         stock,
         type,
-        variants, // NEW
+        variants,
+        variantImageMeta
       } = req.body;
 
       const discount = calculateDiscount(price, oldPrice);
@@ -526,6 +537,7 @@ router.post(
       // ============================================================
       // PARSE VARIANTS
       // ============================================================
+
       let parsedVariants = [];
 
       if (variants) {
@@ -535,7 +547,6 @@ router.post(
               ? JSON.parse(variants)
               : variants;
 
-          // Make sure variants is an array
           if (!Array.isArray(parsedVariants)) {
             parsedVariants = [];
           }
@@ -546,8 +557,9 @@ router.post(
       }
 
       // ============================================================
-      // UPLOAD MAIN IMAGE
+      // UPLOAD MAIN PRODUCT IMAGE
       // ============================================================
+
       let mainImageUrl = null;
 
       if (req.files?.img_url?.length) {
@@ -559,8 +571,9 @@ router.post(
       }
 
       // ============================================================
-      // UPLOAD THUMBNAILS
+      // UPLOAD PRODUCT THUMBNAILS
       // ============================================================
+
       let thumbnailUrls = [];
 
       if (req.files?.thumbnails?.length) {
@@ -572,40 +585,106 @@ router.post(
       }
 
       // ============================================================
+      // UPLOAD VARIANT IMAGES
+      // ============================================================
+
+      for (let i = 0; i < parsedVariants.length; i++) {
+
+        const variant = parsedVariants[i];
+
+        // ---------------- MAIN IMAGE ----------------
+
+        const mainField = `variant_${i}_main`;
+
+        if (req.files?.[mainField]?.length) {
+
+          const result = await uploadToCloudinary(
+            req.files[mainField][0].buffer
+          );
+
+          variant.mainImage = result.secure_url;
+        } else {
+
+          variant.mainImage =
+            variant.existingMainImage || "";
+        }
+
+        // ---------------- THUMBNAILS ----------------
+
+        const thumbnailField =
+          `variant_${i}_thumbnails`;
+
+        let variantThumbnailUrls = [];
+
+        if (req.files?.[thumbnailField]?.length) {
+
+          for (
+            const file of req.files[thumbnailField]
+          ) {
+
+            const result =
+              await uploadToCloudinary(
+                file.buffer
+              );
+
+            variantThumbnailUrls.push(
+              result.secure_url
+            );
+          }
+
+        } else {
+
+          variantThumbnailUrls =
+            variant.existingThumbnails || [];
+        }
+
+        variant.thumbnails =
+          variantThumbnailUrls;
+
+        // Remove temporary frontend fields
+
+        delete variant.existingMainImage;
+        delete variant.existingThumbnails;
+        delete variant.mainImageField;
+        delete variant.thumbnailField;
+      }
+
+      // ============================================================
       // INSERT PRODUCT
       // ============================================================
+
       const result = await pool.query(
-        `INSERT INTO vanayaproducts 
-          (
-            name,
-            category,
-            sub_category,
-            price,
-            old_price,
-            discount,
-            stock,
-            type,
-            img_url,
-            thumbnails,
-            variants,
-            created_at
-          )
-         VALUES
-          (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-            $9,
-            $10,
-            $11::jsonb,
-            CURRENT_TIMESTAMP
-          )
-         RETURNING *`,
+        `INSERT INTO vanayaproducts
+        (
+          name,
+          category,
+          sub_category,
+          price,
+          old_price,
+          discount,
+          stock,
+          type,
+          img_url,
+          thumbnails,
+          variants,
+          created_at
+        )
+        VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10::jsonb,
+          $11::jsonb,
+          CURRENT_TIMESTAMP
+        )
+        RETURNING *`,
         [
           name,
           cat,
@@ -617,24 +696,30 @@ router.post(
           type || "Regular",
           mainImageUrl,
           JSON.stringify(thumbnailUrls),
-          JSON.stringify(parsedVariants),
+          JSON.stringify(parsedVariants)
         ]
       );
 
       // ============================================================
       // RESPONSE
       // ============================================================
+
       res.status(201).json({
         success: true,
-        product: result.rows[0],
+        product: result.rows[0]
       });
+
     } catch (err) {
-      console.error("ADD PRODUCT ERROR:", err);
+
+      console.error(
+        "ADD PRODUCT ERROR:",
+        err
+      );
 
       res.status(500).json({
         success: false,
         error: "Server error",
-        message: err.message,
+        message: err.message
       });
     }
   }
