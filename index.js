@@ -7,6 +7,7 @@ const AuthLogin = require("./routes/Auth");
 const Reviews = require("./routes/reviews");
 const Contact = require("./routes/contact");
 const ScanQr = require("./routes/onlinepaymentsettings");
+const Categories = require("./routes/categories");
 
 
 
@@ -26,6 +27,7 @@ app.use("/auth",AuthLogin);
 app.use("/review",Reviews);
 app.use("/contact",Contact);
 app.use("/scanqr",ScanQr);
+app.use("/categories",Categories);
 
 
 
