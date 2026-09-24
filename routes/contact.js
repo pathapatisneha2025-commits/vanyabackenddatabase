@@ -6,7 +6,7 @@ const db = require("../db"); // adjust path if needed
 router.get("/all", async (req, res) => {
   try {
     const messages = await db.query(
-      "SELECT * FROM contact_messages ORDER BY created_at DESC"
+      "SELECT * FROM vanyacontact_messages ORDER BY created_at DESC"
     );
     res.json(messages.rows);
   } catch (err) {
