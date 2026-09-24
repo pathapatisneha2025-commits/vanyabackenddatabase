@@ -1,7 +1,97 @@
 const express = require("express");
 const router = express.Router();
 
+const multer = require("multer");
+const cloudinary = require("../cloudinary");
 const pool = require("../db");
+
+// ============================================================
+// MULTER CONFIGURATION
+// ============================================================
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
+
+// ============================================================
+// HELPER: UPLOAD BUFFER TO CLOUDINARY
+// ============================================================
+
+const uploadToCloudinary = (buffer) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "vanya/collections",
+        resource_type: "image",
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(result);
+        }
+      }
+    );
+
+    uploadStream.end(buffer);
+  });
+};
+
+// ============================================================
+// HELPER: DELETE IMAGE FROM CLOUDINARY
+// ============================================================
+
+const deleteFromCloudinary = async (publicId) => {
+  if (!publicId) return;
+
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch (error) {
+    console.error("CLOUDINARY DELETE ERROR:", error);
+  }
+};
+
+// ============================================================
+// HELPER: GET PUBLIC ID FROM CLOUDINARY URL
+// ============================================================
+
+const getCloudinaryPublicId = (imageUrl) => {
+  try {
+    if (!imageUrl || !imageUrl.includes("res.cloudinary.com")) {
+      return null;
+    }
+
+    const url = new URL(imageUrl);
+
+    const parts = url.pathname.split("/");
+
+    const uploadIndex = parts.indexOf("upload");
+
+    if (uploadIndex === -1) {
+      return null;
+    }
+
+    let publicIdParts = parts.slice(uploadIndex + 1);
+
+    // Remove version like v123456789
+    if (
+      publicIdParts.length > 0 &&
+      /^v\d+$/.test(publicIdParts[0])
+    ) {
+      publicIdParts.shift();
+    }
+
+    let publicId = publicIdParts.join("/");
+
+    // Remove extension
+    publicId = publicId.replace(/\.[^/.]+$/, "");
+
+    return publicId;
+  } catch (error) {
+    console.error("GET CLOUDINARY PUBLIC ID ERROR:", error);
+    return null;
+  }
+};
 
 // ============================================================
 // GET ALL COLLECTIONS
@@ -10,8 +100,7 @@ const pool = require("../db");
 
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(
-      `
+    const result = await pool.query(`
       SELECT
         id,
         category,
@@ -19,8 +108,7 @@ router.get("/", async (req, res) => {
         created_at
       FROM collections
       ORDER BY id DESC
-      `
-    );
+    `);
 
     res.json(result.rows);
   } catch (error) {
@@ -75,11 +163,15 @@ router.get("/:id", async (req, res) => {
 // ============================================================
 // CREATE COLLECTION
 // POST /collections
+//
+// Form-data:
+// category = SILK SAREES
+// image = selected image
 // ============================================================
 
-router.post("/", async (req, res) => {
+router.post("/add", upload.single("image"), async (req, res) => {
   try {
-    const { category, image_url } = req.body;
+    const { category } = req.body;
 
     if (!category || !category.trim()) {
       return res.status(400).json({
@@ -87,13 +179,16 @@ router.post("/", async (req, res) => {
       });
     }
 
-    if (!image_url || !image_url.trim()) {
+    if (!req.file) {
       return res.status(400).json({
         message: "Collection image is required",
       });
     }
 
-    // Check if category already exists
+    // --------------------------------------------------------
+    // CHECK DUPLICATE CATEGORY
+    // --------------------------------------------------------
+
     const existing = await pool.query(
       `
       SELECT id
@@ -108,6 +203,20 @@ router.post("/", async (req, res) => {
         message: "This category already exists",
       });
     }
+
+    // --------------------------------------------------------
+    // UPLOAD IMAGE TO CLOUDINARY
+    // --------------------------------------------------------
+
+    const cloudinaryResult = await uploadToCloudinary(
+      req.file.buffer
+    );
+
+    const imageUrl = cloudinaryResult.secure_url;
+
+    // --------------------------------------------------------
+    // SAVE TO DATABASE
+    // --------------------------------------------------------
 
     const result = await pool.query(
       `
@@ -129,7 +238,7 @@ router.post("/", async (req, res) => {
       `,
       [
         category.trim(),
-        image_url.trim(),
+        imageUrl,
       ]
     );
 
@@ -150,12 +259,16 @@ router.post("/", async (req, res) => {
 // ============================================================
 // UPDATE COLLECTION
 // PUT /collections/:id
+//
+// Form-data:
+// category = SILK SAREES
+// image = new image (optional)
 // ============================================================
 
-router.put("/:id", async (req, res) => {
+router.put("/update/:id", upload.single("image"), async (req, res) => {
   try {
     const { id } = req.params;
-    const { category, image_url } = req.body;
+    const { category } = req.body;
 
     if (!category || !category.trim()) {
       return res.status(400).json({
@@ -163,13 +276,35 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    if (!image_url || !image_url.trim()) {
-      return res.status(400).json({
-        message: "Collection image is required",
+    // --------------------------------------------------------
+    // GET EXISTING COLLECTION
+    // --------------------------------------------------------
+
+    const existingCollection = await pool.query(
+      `
+      SELECT
+        id,
+        category,
+        image_url
+      FROM collections
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    if (existingCollection.rows.length === 0) {
+      return res.status(404).json({
+        message: "Collection not found",
       });
     }
 
-    const existing = await pool.query(
+    const oldCollection = existingCollection.rows[0];
+
+    // --------------------------------------------------------
+    // CHECK DUPLICATE CATEGORY
+    // --------------------------------------------------------
+
+    const duplicate = await pool.query(
       `
       SELECT id
       FROM collections
@@ -179,11 +314,45 @@ router.put("/:id", async (req, res) => {
       [category, id]
     );
 
-    if (existing.rows.length > 0) {
+    if (duplicate.rows.length > 0) {
       return res.status(409).json({
         message: "Another category with this name already exists",
       });
     }
+
+    // --------------------------------------------------------
+    // KEEP OLD IMAGE BY DEFAULT
+    // --------------------------------------------------------
+
+    let imageUrl = oldCollection.image_url;
+
+    // --------------------------------------------------------
+    // IF NEW IMAGE WAS SELECTED
+    // --------------------------------------------------------
+
+    if (req.file) {
+      const cloudinaryResult = await uploadToCloudinary(
+        req.file.buffer
+      );
+
+      imageUrl = cloudinaryResult.secure_url;
+
+      // ------------------------------------------------------
+      // DELETE OLD CLOUDINARY IMAGE
+      // ------------------------------------------------------
+
+      const oldPublicId = getCloudinaryPublicId(
+        oldCollection.image_url
+      );
+
+      if (oldPublicId) {
+        await deleteFromCloudinary(oldPublicId);
+      }
+    }
+
+    // --------------------------------------------------------
+    // UPDATE DATABASE
+    // --------------------------------------------------------
 
     const result = await pool.query(
       `
@@ -200,16 +369,10 @@ router.put("/:id", async (req, res) => {
       `,
       [
         category.trim(),
-        image_url.trim(),
+        imageUrl,
         id,
       ]
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        message: "Collection not found",
-      });
-    }
 
     res.json({
       message: "Collection updated successfully",
@@ -230,28 +393,64 @@ router.put("/:id", async (req, res) => {
 // DELETE /collections/:id
 // ============================================================
 
-router.delete("/:id", async (req, res) => {
+router.delete("/delete/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await pool.query(
+    // --------------------------------------------------------
+    // GET IMAGE BEFORE DELETE
+    // --------------------------------------------------------
+
+    const existing = await pool.query(
       `
-      DELETE FROM collections
+      SELECT
+        id,
+        category,
+        image_url
+      FROM collections
       WHERE id = $1
-      RETURNING id, category
       `,
       [id]
     );
 
-    if (result.rows.length === 0) {
+    if (existing.rows.length === 0) {
       return res.status(404).json({
         message: "Collection not found",
       });
     }
 
+    const collection = existing.rows[0];
+
+    // --------------------------------------------------------
+    // DELETE FROM DATABASE
+    // --------------------------------------------------------
+
+    await pool.query(
+      `
+      DELETE FROM collections
+      WHERE id = $1
+      `,
+      [id]
+    );
+
+    // --------------------------------------------------------
+    // DELETE IMAGE FROM CLOUDINARY
+    // --------------------------------------------------------
+
+    const publicId = getCloudinaryPublicId(
+      collection.image_url
+    );
+
+    if (publicId) {
+      await deleteFromCloudinary(publicId);
+    }
+
     res.json({
       message: "Collection deleted successfully",
-      collection: result.rows[0],
+      collection: {
+        id: collection.id,
+        category: collection.category,
+      },
     });
   } catch (error) {
     console.error("DELETE COLLECTION ERROR:", error);
