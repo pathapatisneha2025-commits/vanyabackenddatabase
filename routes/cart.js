@@ -122,55 +122,21 @@ router.get("/", async (req, res) => {
    ADD ITEM TO CART
    - increments quantity if already exists
 ====================================================== */
-
 router.post("/add", async (req, res) => {
   const {
     user_id,
     product_id,
     quantity,
-    colour,
-    color,
-    size,
-    variant,
+    variant
   } = req.body;
-
-  if (!user_id || !product_id) {
-    return res.status(400).json({
-      error: "user_id and product_id are required",
-    });
-  }
 
   if (!quantity || Number(quantity) < 1) {
     return res.status(400).json({
-      error: "Quantity must be at least 1",
+      error: "Quantity must be at least 1"
     });
   }
 
   try {
-    // ============================================================
-    // SELECTED COLOUR / SIZE
-    // ============================================================
-
-    const selectedColour =
-      colour ||
-      color ||
-      variant?.colour ||
-      variant?.color ||
-      null;
-
-    const selectedSize =
-      size ||
-      variant?.size ||
-      null;
-
-    console.log("======================================");
-    console.log("ADD TO CART");
-    console.log("Product:", product_id);
-    console.log("Colour:", selectedColour);
-    console.log("Size:", selectedSize);
-    console.log("Quantity:", quantity);
-    console.log("======================================");
-
     // ============================================================
     // 1. GET PRODUCT
     // ============================================================
@@ -186,14 +152,14 @@ router.post("/add", async (req, res) => {
 
     if (productRes.rows.length === 0) {
       return res.status(404).json({
-        error: "Product not found",
+        error: "Product not found"
       });
     }
 
     const product = productRes.rows[0];
 
     // ============================================================
-    // 2. GET VARIANTS
+    // 2. GET VARIANTS JSONB
     // ============================================================
 
     let variants = product.variants || [];
@@ -211,140 +177,153 @@ router.post("/add", async (req, res) => {
     }
 
     // ============================================================
-    // 3. FIND SELECTED COLOUR VARIANT
+    // 3. SELECTED VARIANT FROM FRONTEND
     // ============================================================
 
-    let selectedVariant = null;
+    let selectedVariant = variant || null;
 
-    if (selectedColour && variants.length > 0) {
-      selectedVariant = variants.find(
+    // If variant is sent as a JSON string
+    if (typeof selectedVariant === "string") {
+      try {
+        selectedVariant = JSON.parse(selectedVariant);
+      } catch (err) {
+        selectedVariant = null;
+      }
+    }
+
+    // ============================================================
+    // 4. FIND ACTUAL VARIANT FROM PRODUCT VARIANTS
+    // ============================================================
+
+    let productVariant = null;
+
+    if (variants.length > 0) {
+
+      if (!selectedVariant || !selectedVariant.colour) {
+        return res.status(400).json({
+          error: "Please select a colour"
+        });
+      }
+
+      productVariant = variants.find(
         (item) =>
           String(item.colour || "")
             .trim()
             .toLowerCase() ===
-          String(selectedColour)
+          String(selectedVariant.colour || "")
             .trim()
             .toLowerCase()
       );
+
+      if (!productVariant) {
+        return res.status(400).json({
+          error: "Selected colour is not available"
+        });
+      }
     }
 
     // ============================================================
-    // 4. IF PRODUCT HAS VARIANTS
+    // 5. CHECK STOCK
     // ============================================================
 
-    if (variants.length > 0) {
-      if (!selectedColour) {
-        return res.status(400).json({
-          error: "Please select a colour",
-        });
-      }
+    let currentStock;
 
-      if (!selectedVariant) {
-        return res.status(400).json({
-          error: `Colour "${selectedColour}" is not available`,
-        });
-      }
-
-      console.log(
-        "SELECTED VARIANT:",
-        selectedVariant
-      );
-    }
-
-    // ============================================================
-    // 5. DETERMINE STOCK
-    // ============================================================
-
-    let availableStock = 0;
-
-    if (selectedVariant) {
-      // Variant stock
-      availableStock = Number(
-        selectedVariant.stock || 0
-      );
+    if (productVariant) {
+      // Stock from selected JSONB variant
+      currentStock = Number(productVariant.stock || 0);
     } else {
-      // Product stock when there are no variants
-      availableStock = Number(
-        product.stock || 0
-      );
+      // Normal product stock
+      currentStock = Number(product.stock || 0);
     }
 
-    console.log(
-      "AVAILABLE STOCK:",
-      availableStock
-    );
-
-    if (availableStock <= 0) {
+    if (currentStock < Number(quantity)) {
       return res.status(400).json({
-        error: selectedColour
-          ? `${selectedColour} is out of stock`
-          : "Product is out of stock",
-      });
-    }
-
-    if (Number(quantity) > availableStock) {
-      return res.status(400).json({
-        error: `Only ${availableStock} item(s) available`,
+        error: "Not enough stock"
       });
     }
 
     // ============================================================
-    // 6. BUILD VARIANT DATA
+    // 6. SAVE COMPLETE VARIANT JSONB
     // ============================================================
 
-    const variantData = selectedVariant
+    const variantToSave = productVariant
       ? {
-          ...selectedVariant,
+          ...productVariant,
 
-          colour: selectedVariant.colour,
-          size: selectedSize || null,
+          // Keep selected size if your frontend sends it
+          size: selectedVariant?.size || null
         }
-      : {
-          colour: selectedColour || null,
-          size: selectedSize || null,
-        };
+      : selectedVariant || null;
 
     // ============================================================
-    // 7. CHECK EXISTING CART ITEM
-    //
-    // SAME PRODUCT + SAME COLOUR + SAME SIZE
+    // 7. CHECK EXISTING CART ITEMS
     // ============================================================
 
-    const existing = await pool.query(
+    const existingRes = await pool.query(
       `
       SELECT *
       FROM cart_items
       WHERE user_id = $1
         AND product_id = $2
-        AND LOWER(COALESCE(colour, '')) =
-            LOWER(COALESCE($3, ''))
-        AND LOWER(COALESCE(size, '')) =
-            LOWER(COALESCE($4, ''))
       `,
-      [
-        user_id,
-        product_id,
-        selectedColour,
-        selectedSize,
-      ]
+      [user_id, product_id]
     );
 
     // ============================================================
-    // 8. EXISTING CART ITEM
+    // 8. CHECK WHETHER SAME VARIANT ALREADY EXISTS
     // ============================================================
 
-    if (existing.rows.length > 0) {
-      const existingItem = existing.rows[0];
+    let existingItem = null;
 
-      const oldQuantity =
-        Number(existingItem.quantity || 0);
+    if (existingRes.rows.length > 0) {
+      existingItem = existingRes.rows.find((item) => {
+
+        const oldVariant = item.variant || {};
+
+        const oldColour = String(
+          oldVariant.colour || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const newColour = String(
+          variantToSave?.colour || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const oldSize = String(
+          oldVariant.size || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        const newSize = String(
+          variantToSave?.size || ""
+        )
+          .trim()
+          .toLowerCase();
+
+        return (
+          oldColour === newColour &&
+          oldSize === newSize
+        );
+      });
+    }
+
+    // ============================================================
+    // 9. UPDATE EXISTING SAME VARIANT
+    // ============================================================
+
+    if (existingItem) {
 
       const newQuantity =
-        oldQuantity + Number(quantity);
+        Number(existingItem.quantity || 0) +
+        Number(quantity);
 
-      if (newQuantity > availableStock) {
+      if (newQuantity > currentStock) {
         return res.status(400).json({
-          error: `Only ${availableStock} item(s) available for ${selectedColour || "this product"}`,
+          error: "Not enough stock"
         });
       }
 
@@ -360,8 +339,8 @@ router.post("/add", async (req, res) => {
         `,
         [
           newQuantity,
-          JSON.stringify(variantData),
-          existingItem.id,
+          JSON.stringify(variantToSave),
+          existingItem.id
         ]
       );
 
@@ -369,27 +348,28 @@ router.post("/add", async (req, res) => {
       // REDUCE VARIANT STOCK
       // ==========================================================
 
-      if (selectedVariant) {
+      if (productVariant) {
+
         const updatedVariants = variants.map(
           (item) => {
-            const sameColour =
+
+            if (
               String(item.colour || "")
                 .trim()
                 .toLowerCase() ===
-              String(selectedColour || "")
+              String(productVariant.colour || "")
                 .trim()
-                .toLowerCase();
-
-            if (!sameColour) {
-              return item;
+                .toLowerCase()
+            ) {
+              return {
+                ...item,
+                stock:
+                  Number(item.stock || 0) -
+                  Number(quantity)
+              };
             }
 
-            return {
-              ...item,
-              stock:
-                Number(item.stock || 0) -
-                Number(quantity),
-            };
+            return item;
           }
         );
 
@@ -401,10 +381,12 @@ router.post("/add", async (req, res) => {
           `,
           [
             JSON.stringify(updatedVariants),
-            product_id,
+            product_id
           ]
         );
+
       } else {
+
         // Normal product without variants
         await pool.query(
           `
@@ -412,19 +394,18 @@ router.post("/add", async (req, res) => {
           SET stock = stock - $1
           WHERE id = $2
           `,
-          [quantity, product_id]
+          [
+            quantity,
+            product_id
+          ]
         );
       }
 
-      return res.json({
-        success: true,
-        message: "Cart quantity updated",
-        item: updated.rows[0],
-      });
+      return res.json(updated.rows[0]);
     }
 
     // ============================================================
-    // 9. INSERT NEW CART ITEM
+    // 10. INSERT NEW CART ITEM
     // ============================================================
 
     const newItem = await pool.query(
@@ -434,49 +415,46 @@ router.post("/add", async (req, res) => {
         user_id,
         product_id,
         quantity,
-        colour,
-        size,
         variant
       )
       VALUES
-      ($1, $2, $3, $4, $5, $6)
+      ($1, $2, $3, $4::jsonb)
       RETURNING *
       `,
       [
         user_id,
         product_id,
         quantity,
-        selectedColour,
-        selectedSize,
-        JSON.stringify(variantData),
+        JSON.stringify(variantToSave)
       ]
     );
 
     // ============================================================
-    // 10. REDUCE CORRECT STOCK
+    // 11. REDUCE STOCK
     // ============================================================
 
-    if (selectedVariant) {
+    if (productVariant) {
+
       const updatedVariants = variants.map(
         (item) => {
-          const sameColour =
+
+          if (
             String(item.colour || "")
               .trim()
               .toLowerCase() ===
-            String(selectedColour || "")
+            String(productVariant.colour || "")
               .trim()
-              .toLowerCase();
-
-          if (!sameColour) {
-            return item;
+              .toLowerCase()
+          ) {
+            return {
+              ...item,
+              stock:
+                Number(item.stock || 0) -
+                Number(quantity)
+            };
           }
 
-          return {
-            ...item,
-            stock:
-              Number(item.stock || 0) -
-              Number(quantity),
-          };
+          return item;
         }
       );
 
@@ -488,43 +466,46 @@ router.post("/add", async (req, res) => {
         `,
         [
           JSON.stringify(updatedVariants),
-          product_id,
+          product_id
         ]
       );
+
     } else {
+
+      // Normal product without variants
       await pool.query(
         `
         UPDATE vanayaproducts
         SET stock = stock - $1
         WHERE id = $2
         `,
-        [quantity, product_id]
+        [
+          quantity,
+          product_id
+        ]
       );
     }
 
     // ============================================================
-    // 11. RESPONSE
+    // 12. RESPONSE
     // ============================================================
 
     return res.json({
       success: true,
       message: "Item added to cart",
-      item: newItem.rows[0],
+      item: newItem.rows[0]
     });
 
   } catch (err) {
-    console.error(
-      "ADD TO CART ERROR:",
-      err
-    );
+
+    console.error("ADD TO CART ERROR:", err);
 
     return res.status(500).json({
       error: "Internal server error",
-      details: err.message,
+      details: err.message
     });
   }
 });
-
 /* ======================================================
    UPDATE CART ITEM QUANTITY
 ====================================================== */
