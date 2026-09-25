@@ -5,81 +5,245 @@ const pool = require("../db"); // PostgreSQL pool
 /* ======================================================
    GET CART ITEMS FOR A USER
 ====================================================== */
+
+/* ======================================================
+   GET CART ITEMS FOR A SPECIFIC USER
+====================================================== */
 router.get("/:user_id", async (req, res) => {
   const { user_id } = req.params;
 
   try {
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT 
         ci.id AS cart_id,
+        ci.user_id,
         ci.quantity,
 
         p.id AS product_id,
         p.name,
         p.category,
         p.sub_category,
-        p.price,
-        p.img_url,
+        p.price AS product_price,
+        p.img_url AS product_img_url,
 
-        (ci.quantity * p.price) AS subtotal
+        -- SELECTED VARIANT
+        ci.variant
 
       FROM cart_items ci
 
-      JOIN vanayaproducts p 
-      ON ci.product_id = p.id
+      JOIN vanayaproducts p
+        ON ci.product_id = p.id
 
       WHERE ci.user_id = $1
 
       ORDER BY ci.id ASC
+      `,
+      [user_id]
+    );
 
-    `, [user_id]);
+    // ======================================================
+    // FORMAT CART ITEMS
+    // ======================================================
 
+    const cartItems = result.rows.map((row) => {
 
-    const cartItems = result.rows.map(row => ({
-      id: row.cart_id,
+      // ====================================================
+      // VARIANT JSONB
+      // ====================================================
 
-      // Product ID for product coupon
-      product_id: row.product_id,
+      const variant =
+        row.variant &&
+        typeof row.variant === "object"
+          ? row.variant
+          : {};
 
-      name: row.name,
+      // ====================================================
+      // SELECTED VARIANT PRICE
+      // ====================================================
 
-      // Category for category coupon
-      category: row.category,
+      const price = Number(
+        variant.price ??
+        row.product_price ??
+        0
+      );
 
-      sub_category: row.sub_category,
+      // ====================================================
+      // QUANTITY
+      // ====================================================
 
-      price: Number(row.price),
+      const quantity = Number(
+        row.quantity || 0
+      );
 
-      img_url: row.img_url,
+      // ====================================================
+      // SELECTED VARIANT IMAGE
+      // ====================================================
 
-      quantity: row.quantity,
+      const imgUrl =
+        variant.mainImage ||
+        variant.main_image ||
+        variant.img_url ||
+        variant.image ||
+        variant.image_url ||
+        row.product_img_url ||
+        null;
 
-      subtotal: Number(row.subtotal)
-    }));
+      // ====================================================
+      // COLOUR
+      // ====================================================
 
+      const colour =
+        variant.colour ??
+        variant.color ??
+        null;
+
+      // ====================================================
+      // SIZE
+      // ====================================================
+
+      const size =
+        variant.size ??
+        null;
+
+      // ====================================================
+      // OLD PRICE
+      // ====================================================
+
+      const oldPrice =
+        variant.oldPrice ??
+        variant.old_price ??
+        null;
+
+      // ====================================================
+      // DISCOUNT
+      // ====================================================
+
+      const discount =
+        variant.discount ??
+        null;
+
+      // ====================================================
+      // STOCK
+      // ====================================================
+
+      const stock =
+        variant.stock ??
+        null;
+
+      // ====================================================
+      // SUBTOTAL
+      // ====================================================
+
+      const subtotal =
+        price * quantity;
+
+      // ====================================================
+      // RESPONSE
+      // ====================================================
+
+      return {
+
+        // Cart row ID
+        id: row.cart_id,
+
+        // User ID
+        user_id: row.user_id,
+
+        // Product ID
+        product_id: row.product_id,
+
+        // Product information
+        name: row.name,
+
+        category: row.category,
+
+        sub_category: row.sub_category,
+
+        // ==================================================
+        // COMPLETE SELECTED VARIANT
+        // ==================================================
+
+        variant: variant,
+
+        // ==================================================
+        // SELECTED VARIANT DETAILS
+        // ==================================================
+
+        colour: colour,
+
+        size: size,
+
+        price: price,
+
+        oldPrice:
+          oldPrice !== null
+            ? Number(oldPrice)
+            : null,
+
+        discount:
+          discount !== null
+            ? Number(discount)
+            : null,
+
+        stock:
+          stock !== null
+            ? Number(stock)
+            : null,
+
+        // ==================================================
+        // IMAGE
+        // ==================================================
+
+        img_url: imgUrl,
+
+        // ==================================================
+        // QUANTITY
+        // ==================================================
+
+        quantity: quantity,
+
+        // ==================================================
+        // SUBTOTAL
+        // ==================================================
+
+        subtotal: subtotal
+      };
+    });
+
+    // ======================================================
+    // TOTAL
+    // ======================================================
 
     const total = cartItems.reduce(
-      (acc, item) => acc + item.subtotal,
+      (acc, item) =>
+        acc + Number(item.subtotal || 0),
       0
     );
 
+    // ======================================================
+    // RESPONSE
+    // ======================================================
 
     res.json({
       items: cartItems,
-      total
+      total: total
     });
-
 
   } catch (err) {
 
-    console.error(err);
+    console.error(
+      "GET USER CART ERROR:",
+      err
+    );
 
     res.status(500).json({
-      error: "Internal server error"
+      error: "Internal server error",
+      message: err.message
     });
-
   }
 });
+
 /* ======================================================
    GET ALL CART ITEMS (ALL USERS)
 ====================================================== */
