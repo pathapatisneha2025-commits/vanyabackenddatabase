@@ -89,32 +89,110 @@ router.get("/", async (req, res) => {
       SELECT 
         ci.id AS cart_id,
         ci.user_id,
+        ci.product_id,
         ci.quantity,
-        p.id AS product_id,
-        p.name,
-        p.price,
-        p.img_url,
-        (ci.quantity * p.price) AS subtotal
+
+        p.name AS product_name,
+        p.price AS product_price,
+        p.img_url AS product_img_url,
+
+        ci.colour,
+        ci.size,
+        ci.variant_id,
+        ci.variant_data,
+
+        -- Use selected variant price first
+        COALESCE(
+          (ci.variant_data->>'price')::numeric,
+          p.price
+        ) AS final_price,
+
+        -- Use selected variant image first
+        COALESCE(
+          ci.variant_data->>'mainImage',
+          ci.variant_data->>'img_url',
+          ci.variant_data->>'image',
+          p.img_url
+        ) AS final_img_url
+
       FROM cart_items ci
-      JOIN vanayaproducts p ON ci.product_id = p.id
+
+      JOIN vanayaproducts p
+        ON ci.product_id = p.id
+
       ORDER BY ci.id ASC
     `);
 
-    const cartItems = result.rows.map(row => ({
-      id: row.cart_id,
-      user_id: row.user_id,
-      product_id: row.product_id,
-      name: row.name,
-      price: parseFloat(row.price),
-      img_url: row.img_url,
-      quantity: row.quantity,
-      subtotal: parseFloat(row.subtotal)
-    }));
+    const cartItems = result.rows.map(row => {
+
+      const price = Number(row.final_price || 0);
+
+      const quantity = Number(row.quantity || 0);
+
+      return {
+        // =====================================================
+        // CART
+        // =====================================================
+
+        id: row.cart_id,
+
+        user_id: row.user_id,
+
+        product_id: row.product_id,
+
+        // =====================================================
+        // PRODUCT
+        // =====================================================
+
+        name: row.product_name,
+
+        // =====================================================
+        // SELECTED VARIANT
+        // =====================================================
+
+        colour: row.colour || null,
+
+        size: row.size || null,
+
+        variant_id: row.variant_id || null,
+
+        variant_data: row.variant_data || null,
+
+        // =====================================================
+        // PRICE
+        // =====================================================
+
+        price: price,
+
+        // =====================================================
+        // IMAGE
+        // =====================================================
+
+        img_url: row.final_img_url || null,
+
+        // =====================================================
+        // QUANTITY
+        // =====================================================
+
+        quantity: quantity,
+
+        // =====================================================
+        // SUBTOTAL
+        // =====================================================
+
+        subtotal: price * quantity
+      };
+    });
 
     res.json(cartItems);
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("GET CART ERROR:", err);
+
+    res.status(500).json({
+      error: "Internal server error",
+      message: err.message
+    });
   }
 });
 
