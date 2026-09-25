@@ -86,7 +86,7 @@ router.get("/:user_id", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
+      SELECT
         ci.id AS cart_id,
         ci.user_id,
         ci.product_id,
@@ -96,24 +96,7 @@ router.get("/", async (req, res) => {
         p.price AS product_price,
         p.img_url AS product_img_url,
 
-        ci.colour,
-        ci.size,
-        ci.variant_id,
-        ci.variant_data,
-
-        -- Use selected variant price first
-        COALESCE(
-          (ci.variant_data->>'price')::numeric,
-          p.price
-        ) AS final_price,
-
-        -- Use selected variant image first
-        COALESCE(
-          ci.variant_data->>'mainImage',
-          ci.variant_data->>'img_url',
-          ci.variant_data->>'image',
-          p.img_url
-        ) AS final_img_url
+        ci.variant_data
 
       FROM cart_items ci
 
@@ -123,62 +106,78 @@ router.get("/", async (req, res) => {
       ORDER BY ci.id ASC
     `);
 
-    const cartItems = result.rows.map(row => {
+    const cartItems = result.rows.map((row) => {
 
-      const price = Number(row.final_price || 0);
+      // =====================================================
+      // VARIANT JSONB
+      // =====================================================
 
-      const quantity = Number(row.quantity || 0);
+      const variant =
+        row.variant_data || {};
+
+      // =====================================================
+      // SELECTED VARIANT PRICE
+      // =====================================================
+
+      const price = Number(
+        variant.price ??
+        row.product_price ??
+        0
+      );
+
+      // =====================================================
+      // QUANTITY
+      // =====================================================
+
+      const quantity = Number(
+        row.quantity || 0
+      );
+
+      // =====================================================
+      // SELECTED VARIANT IMAGE
+      // =====================================================
+
+      const imgUrl =
+        variant.mainImage ||
+        variant.main_image ||
+        variant.img_url ||
+        variant.image ||
+        variant.image_url ||
+        row.product_img_url ||
+        null;
+
+      // =====================================================
+      // RESPONSE
+      // =====================================================
 
       return {
-        // =====================================================
-        // CART
-        // =====================================================
-
         id: row.cart_id,
 
         user_id: row.user_id,
 
         product_id: row.product_id,
 
-        // =====================================================
-        // PRODUCT
-        // =====================================================
-
         name: row.product_name,
 
-        // =====================================================
-        // SELECTED VARIANT
-        // =====================================================
+        // ===================================================
+        // COMPLETE SELECTED VARIANT
+        // ===================================================
 
-        colour: row.colour || null,
+        variant: variant,
 
-        size: row.size || null,
+        // ===================================================
+        // CONVENIENCE VALUES
+        // ===================================================
 
-        variant_id: row.variant_id || null,
+        colour: variant.colour || null,
 
-        variant_data: row.variant_data || null,
-
-        // =====================================================
-        // PRICE
-        // =====================================================
+        size: variant.size || null,
 
         price: price,
 
-        // =====================================================
-        // IMAGE
-        // =====================================================
-
-        img_url: row.final_img_url || null,
-
-        // =====================================================
-        // QUANTITY
-        // =====================================================
+        img_url: imgUrl,
 
         quantity: quantity,
-
-        // =====================================================
-        // SUBTOTAL
-        // =====================================================
 
         subtotal: price * quantity
       };
@@ -187,7 +186,11 @@ router.get("/", async (req, res) => {
     res.json(cartItems);
 
   } catch (err) {
-    console.error("GET CART ERROR:", err);
+
+    console.error(
+      "GET CART ERROR:",
+      err
+    );
 
     res.status(500).json({
       error: "Internal server error",
@@ -195,7 +198,6 @@ router.get("/", async (req, res) => {
     });
   }
 });
-
 /* ======================================================
    ADD ITEM TO CART
    - increments quantity if already exists
