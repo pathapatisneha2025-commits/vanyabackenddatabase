@@ -8,7 +8,7 @@ const Reviews = require("./routes/reviews");
 const Contact = require("./routes/contact");
 const ScanQr = require("./routes/onlinepaymentsettings");
 const Categories = require("./routes/categories");
-
+const Banner = require("./routes/banner");
 
 
 
@@ -28,6 +28,7 @@ app.use("/review",Reviews);
 app.use("/contact",Contact);
 app.use("/scanqr",ScanQr);
 app.use("/categories",Categories);
+app.use("/banner",Banner);
 
 
 
