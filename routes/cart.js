@@ -96,7 +96,7 @@ router.get("/", async (req, res) => {
         p.price AS product_price,
         p.img_url AS product_img_url,
 
-        ci.variant_data
+        ci.variant
 
       FROM cart_items ci
 
