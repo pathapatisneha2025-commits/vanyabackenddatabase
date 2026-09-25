@@ -113,7 +113,7 @@ router.get("/", async (req, res) => {
       // =====================================================
 
       const variant =
-        row.variant_data || {};
+        row.variant || {};
 
       // =====================================================
       // SELECTED VARIANT PRICE
